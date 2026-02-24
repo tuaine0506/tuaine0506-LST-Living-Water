@@ -1,0 +1,5 @@
+{
+  "name": "LST 'Living Water'",
+  "description": "A web application for the La Sierra Tongan Seventh Day Adventist Fellowship's fundraiser, selling 'Living Water' immunity shots. This app allows customers to order, helps volunteers track and fulfill orders, schedules fulfillment groups, and provides a sales dashboard.",
+  "requestFramePermissions": []
+}
