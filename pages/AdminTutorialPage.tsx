@@ -77,7 +77,7 @@ const AdminTutorialPage: React.FC = () => {
         'Go to the "Stats" tab to view real-time fundraising progress.',
         'Monitor "Total Revenue", "Total Orders", and "Average Order Value".',
         'Check the "Sales by Group" chart to see which volunteer group is leading.',
-        'Use these stats for weekly Fellowship announcements and motivation.'
+        'Use these stats for weekly Church announcements and motivation.'
       ]
     },
     groups: {

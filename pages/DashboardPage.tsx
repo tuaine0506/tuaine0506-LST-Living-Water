@@ -7,21 +7,31 @@ import { DollarSign, Hash, ShoppingBag, Key, Check, AlertCircle } from 'lucide-r
 import { GroupName } from '../types';
 
 const DashboardPage: React.FC = () => {
-  const { orders, changePassword } = useApp();
+  const { orders, changePassword, isDeliveryEnabled, toggleDeliveryEnabled, resetProducts } = useApp();
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordStatus, setPasswordStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword && newPassword === confirmPassword) {
-      changePassword(newPassword);
+    if (!newPassword || newPassword !== confirmPassword) {
+      setPasswordStatus('error');
+      setErrorMessage('Passwords do not match or are empty.');
+      return;
+    }
+
+    const result = await changePassword(currentPassword, newPassword);
+    if (result.success) {
       setPasswordStatus('success');
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setTimeout(() => setPasswordStatus('idle'), 3000);
     } else {
       setPasswordStatus('error');
+      setErrorMessage(result.error || 'Failed to change password.');
     }
   };
 
@@ -116,10 +126,53 @@ const DashboardPage: React.FC = () => {
         </div>
         
         <div className="max-w-md">
+          <div className="mb-8 p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-brand-brown">Enable Delivery Option</h3>
+              <p className="text-xs text-gray-500">Allow customers to choose delivery at checkout.</p>
+            </div>
+            <button
+              onClick={toggleDeliveryEnabled}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 shrink-0 ${isDeliveryEnabled ? 'bg-brand-green' : 'bg-gray-300'}`}
+            >
+              <span
+                className={`${isDeliveryEnabled ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+              />
+            </button>
+          </div>
+
+          <div className="mb-8 p-4 bg-orange-50 rounded-xl border border-orange-200">
+            <h3 className="font-bold text-orange-800">Product Defaults</h3>
+            <p className="text-xs text-orange-700 mb-3">Reset all products to their default availability (Only Lemon Ginger active).</p>
+            <button
+              onClick={async () => {
+                if (confirm('Are you sure you want to reset all products to default availability?')) {
+                  const res = await resetProducts();
+                  if (res.success) alert('Products reset successfully!');
+                  else alert(res.error || 'Failed to reset products.');
+                }
+              }}
+              className="bg-orange-600 text-white text-xs font-bold py-2 px-4 rounded-lg hover:bg-orange-700 transition-all shadow-sm active:scale-95"
+            >
+              Reset to Defaults
+            </button>
+          </div>
+
           <form onSubmit={handlePasswordChange} className="space-y-4">
             <div>
               <label className="block text-sm font-bold text-brand-brown mb-2 uppercase tracking-wide">Change Admin Password</label>
               <div className="space-y-3">
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => {
+                    setCurrentPassword(e.target.value);
+                    setPasswordStatus('idle');
+                  }}
+                  placeholder="Current password"
+                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange outline-none transition-all"
+                  required
+                />
                 <input
                   type="password"
                   value={newPassword}
@@ -129,6 +182,7 @@ const DashboardPage: React.FC = () => {
                   }}
                   placeholder="New password"
                   className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange outline-none transition-all"
+                  required
                 />
                 <input
                   type="password"
@@ -139,6 +193,7 @@ const DashboardPage: React.FC = () => {
                   }}
                   placeholder="Confirm new password"
                   className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange outline-none transition-all"
+                  required
                 />
               </div>
             </div>
@@ -157,7 +212,7 @@ const DashboardPage: React.FC = () => {
             )}
             {passwordStatus === 'error' && (
               <div className="flex items-center gap-2 text-red-500 font-bold text-sm">
-                <AlertCircle size={18} /> Passwords do not match or are empty.
+                <AlertCircle size={18} /> {errorMessage}
               </div>
             )}
           </form>

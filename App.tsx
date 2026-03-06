@@ -7,7 +7,8 @@ import SchedulePage from './pages/SchedulePage';
 import RecipesPage from './pages/RecipesPage';
 import AdminTutorialPage from './pages/AdminTutorialPage';
 import DeliveriesPage from './pages/DeliveriesPage';
-import { ShoppingCart, ClipboardList, BarChart3, CalendarDays, Lock, Unlock, Droplets, X, BookOpen, HelpCircle, PlayCircle, Truck } from 'lucide-react';
+import IngredientsPage from './pages/IngredientsPage';
+import { ShoppingCart, ClipboardList, BarChart3, CalendarDays, Lock, Unlock, Droplets, X, BookOpen, HelpCircle, PlayCircle, Truck, Leaf } from 'lucide-react';
 import { useApp } from './context/AppContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -35,9 +36,9 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = login(passwordInput);
+    const success = await login(passwordInput);
     if (success) {
       setShowLoginModal(false);
       setPasswordInput('');
@@ -95,7 +96,7 @@ const AppContent: React.FC = () => {
               <Droplets className="h-8 w-8 text-brand-orange" />
               <div className="flex flex-col">
                   <h1 className="text-xl md:text-2xl font-bold font-serif text-brand-cream leading-tight">Living Water</h1>
-                  <p className="text-[10px] uppercase tracking-widest text-brand-light-green font-semibold">La Sierra Tongan SDA Fellowship</p>
+                  <p className="text-[10px] uppercase tracking-widest text-brand-light-green font-semibold">La Sierra Tongan SDA Church</p>
               </div>
           </NavLink>
           <button 
@@ -116,12 +117,13 @@ const AppContent: React.FC = () => {
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/schedule" element={<ProtectedRoute><SchedulePage /></ProtectedRoute>} />
           <Route path="/recipes" element={<ProtectedRoute><RecipesPage /></ProtectedRoute>} />
+          <Route path="/ingredients" element={<ProtectedRoute><IngredientsPage /></ProtectedRoute>} />
           <Route path="/admin-tutorial" element={<ProtectedRoute><AdminTutorialPage /></ProtectedRoute>} />
         </Routes>
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-brand-green shadow-top-lg z-20 p-2 border-t border-brand-light-green/20">
-        <div className={`container mx-auto grid ${isAdmin ? 'grid-cols-7' : 'grid-cols-2'} gap-1 transition-all duration-300`}>
+        <div className={`container mx-auto grid ${isAdmin ? 'grid-cols-8' : 'grid-cols-2'} gap-1 transition-all duration-300`}>
           <NavLink to="/" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
             <div className="relative">
               <ShoppingCart className="h-5 w-5 md:h-6 md:w-6" />
@@ -133,7 +135,7 @@ const AppContent: React.FC = () => {
             </div>
             <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Order</span>
           </NavLink>
-          
+
           {!isAdmin && (
             <button onClick={scrollToHowTo} className={navLinkClasses}>
               <HelpCircle className="h-5 w-5 md:h-6 md:w-6" />
@@ -143,6 +145,10 @@ const AppContent: React.FC = () => {
 
           {isAdmin && (
             <>
+              <NavLink to="/schedule" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                <CalendarDays className="h-5 w-5 md:h-6 md:w-6" />
+                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Dates</span>
+              </NavLink>
               <NavLink to="/fulfillment" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
                 <ClipboardList className="h-5 w-5 md:h-6 md:w-6" />
                 <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Fulfill</span>
@@ -159,9 +165,9 @@ const AppContent: React.FC = () => {
                 <BookOpen className="h-5 w-5 md:h-6 md:w-6" />
                 <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Recipes</span>
               </NavLink>
-              <NavLink to="/schedule" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
-                <CalendarDays className="h-5 w-5 md:h-6 md:w-6" />
-                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Dates</span>
+              <NavLink to="/ingredients" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                <Leaf className="h-5 w-5 md:h-6 md:w-6" />
+                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Stock</span>
               </NavLink>
               <NavLink to="/admin-tutorial" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
                 <PlayCircle className="h-5 w-5 md:h-6 md:w-6" />

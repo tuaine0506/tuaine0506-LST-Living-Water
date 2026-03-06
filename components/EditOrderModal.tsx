@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Order, OrderSize, DeliveryOption, CartItem } from '../types';
+import { Order, OrderSize, DeliveryOption, CartItem, ProductPrices } from '../types';
 import { useApp } from '../context/AppContext';
-import { X, Save, Trash2, PlusCircle } from 'lucide-react';
+import { X, Save, Trash2, PlusCircle, Calendar as CalendarIcon, ShieldCheck } from 'lucide-react';
 import { PRODUCTS } from '../constants';
+import { MiniCalendar } from './MiniCalendar';
 
 interface EditOrderModalProps {
   order: Order | null;
@@ -20,6 +21,7 @@ const EditOrderModal: React.FC<EditOrderModalProps> = ({ order, onClose }) => {
     state: '',
     zip: ''
   });
+  const [allowAnyDay, setAllowAnyDay] = useState(false);
 
   useEffect(() => {
     if (order) {
@@ -96,8 +98,14 @@ const EditOrderModal: React.FC<EditOrderModalProps> = ({ order, onClose }) => {
   };
 
   const handleSave = () => {
-    if (order.id) {
-      updateOrder(order.id, formData);
+    if (order.id && formData.items) {
+      const productPrice = formData.isRecurring 
+        ? formData.items.reduce((acc, item) => acc + 120 * item.quantity, 0)
+        : formData.items.reduce((acc, item) => acc + ProductPrices[item.size] * item.quantity, 0);
+      
+      const finalPrice = productPrice + (formData.donationAmount || 0);
+      
+      updateOrder(order.id, { ...formData, totalPrice: finalPrice });
       onClose();
     }
   };
@@ -164,8 +172,11 @@ const EditOrderModal: React.FC<EditOrderModalProps> = ({ order, onClose }) => {
               <input 
                 type="number" 
                 name="donationAmount" 
-                value={formData.donationAmount || 0} 
-                onChange={(e) => setFormData(prev => ({ ...prev, donationAmount: parseFloat(e.target.value) || 0 }))}
+                value={isNaN(formData.donationAmount as number) ? '' : formData.donationAmount} 
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  setFormData(prev => ({ ...prev, donationAmount: isNaN(val) ? 0 : val }));
+                }}
                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-brand-orange outline-none bg-white"
               />
             </div>
@@ -259,17 +270,18 @@ const EditOrderModal: React.FC<EditOrderModalProps> = ({ order, onClose }) => {
                         className="text-[10px] p-1 border rounded bg-white"
                     >
                         <option value={OrderSize.SevenShots}>7-Pack</option>
-                        <option value={OrderSize.TwelveOunce}>12oz</option>
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      min="1" 
+                    <select 
                       value={item.quantity} 
-                      onChange={(e) => handleItemQuantityChange(idx, parseInt(e.target.value) || 0)}
-                      className="w-12 p-1 border rounded text-center text-xs bg-white"
-                    />
+                      onChange={(e) => handleItemQuantityChange(idx, parseInt(e.target.value))}
+                      className="w-14 p-1 border rounded text-center text-xs bg-white"
+                    >
+                      {[...Array(10)].map((_, i) => (
+                        <option key={i + 1} value={i + 1}>{i + 1}</option>
+                      ))}
+                    </select>
                     <button onClick={() => handleItemQuantityChange(idx, 0)} className="text-red-500 hover:text-red-700">
                       <Trash2 size={16} />
                     </button>
@@ -282,15 +294,80 @@ const EditOrderModal: React.FC<EditOrderModalProps> = ({ order, onClose }) => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input 
-              type="checkbox" 
-              id="isRecurring" 
-              checked={formData.isRecurring || false} 
-              onChange={(e) => setFormData(prev => ({ ...prev, isRecurring: e.target.checked }))}
-              className="h-4 w-4 rounded border-gray-300 text-brand-orange bg-white"
-            />
-            <label htmlFor="isRecurring" className="text-xs font-bold text-brand-brown cursor-pointer">Recurring Order (4x multiplier)</label>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                id="isRecurring" 
+                checked={formData.isRecurring || false} 
+                onChange={(e) => setFormData(prev => ({ ...prev, isRecurring: e.target.checked }))}
+                className="h-4 w-4 rounded border-gray-300 text-brand-orange bg-white"
+              />
+              <label htmlFor="isRecurring" className="text-xs font-bold text-brand-brown cursor-pointer">Recurring Order ($120 bundle)</label>
+            </div>
+
+            {formData.isRecurring && (
+              <div className="bg-brand-green/5 p-4 rounded-xl border border-brand-green/10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CalendarIcon className="text-brand-green" size={16} />
+                    <p className="text-[10px] font-bold text-brand-green uppercase tracking-widest">Scheduled Pickup Dates</p>
+                  </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer group">
+                    <input 
+                      type="checkbox" 
+                      checked={allowAnyDay} 
+                      onChange={(e) => setAllowAnyDay(e.target.checked)}
+                      className="h-3 w-3 rounded border-gray-300 text-brand-green focus:ring-brand-green bg-white"
+                    />
+                    <span className="text-[9px] font-bold text-gray-400 group-hover:text-brand-green transition-colors flex items-center gap-1">
+                      <ShieldCheck size={10} /> Admin Bypass
+                    </span>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {(formData.recurringDates || []).map((date, idx) => (
+                    <MiniCalendar 
+                      key={idx}
+                      selectedDate={date}
+                      onSelect={(newDate) => {
+                        const newDates = [...(formData.recurringDates || [])];
+                        newDates[idx] = newDate;
+                        
+                        // Automatically recalculate subsequent weeks
+                        let currentD = new Date(newDate + 'T12:00:00');
+                        for (let i = idx + 1; i < newDates.length; i++) {
+                          currentD.setDate(currentD.getDate() + 7);
+                          newDates[i] = currentD.toISOString().split('T')[0];
+                        }
+                        
+                        setFormData(prev => ({ ...prev, recurringDates: newDates }));
+                      }}
+                      weekLabel={`Week ${idx + 1}`}
+                      allowAnyDay={allowAnyDay}
+                    />
+                  ))}
+                  {(!formData.recurringDates || formData.recurringDates.length === 0) && (
+                    <button 
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + (7 - d.getDay()) % 7);
+                        const dates: string[] = [];
+                        for(let i=0; i<4; i++) {
+                          dates.push(new Date(d).toISOString().split('T')[0]);
+                          d.setDate(d.getDate() + 7);
+                        }
+                        setFormData(prev => ({ ...prev, recurringDates: dates }));
+                      }}
+                      className="col-span-full text-[10px] bg-brand-orange text-white py-2 rounded-lg font-bold shadow-sm"
+                    >
+                      Generate Default Dates
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

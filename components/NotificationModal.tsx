@@ -14,7 +14,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({ order, onClose })
   
   if (!order) return null;
 
-  const pickupMessage = `Hello ${order.customerName},\n\nYour 'Living Water' wellness shot order is ready for pickup! You can pick it up this Sunday at the La Sierra Tongan SDA Fellowship.\n\nThank you for your support!`;
+  const pickupMessage = `Hello ${order.customerName},\n\nYour 'Living Water' wellness shot order is ready for pickup! You can pick it up this Sunday at the La Sierra University Church.\n\nThank you for your support!`;
   
   const deliveryMessage = `Hello ${order.customerName},\n\nYour 'Living Water' wellness shot order is fulfilled! It will be delivered this Sunday within a 2-4 hour window (approx. ${deliveryWindow}) to:\n${order.deliveryAddress}\n\nWe will notify you when our driver is nearby. Thank you for your support!`;
 

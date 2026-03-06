@@ -6,7 +6,7 @@ export const PRODUCTS: Product[] = [
     name: 'Lemon Ginger Shot',
     description: 'A classic immune booster to kickstart your day with a zesty punch.',
     imageColor: '#FBBF24', // amber-400
-    ingredients: ['Oranges', 'Lemons', 'Ginger', 'Turmeric', 'Turkey Tail Extract', 'Black Pepper', 'Water/Coconut Water'],
+    ingredients: ['Oranges', 'Lemons', 'Ginger', 'Turmeric', 'Water/Coconut Water'],
     youtubeId: 'vXbFEIrTpg8',
     videoStart: 41,
     videoEnd: 145,
@@ -21,7 +21,7 @@ export const PRODUCTS: Product[] = [
     youtubeId: 'vXbFEIrTpg8',
     videoStart: 145,
     videoEnd: 249,
-    available: true,
+    available: false,
   },
   {
     id: 'pineapple-mint',
@@ -32,7 +32,7 @@ export const PRODUCTS: Product[] = [
     youtubeId: 'vXbFEIrTpg8',
     videoStart: 249,
     videoEnd: 349,
-    available: true,
+    available: false,
   },
   {
     id: 'mixed-berry',
@@ -43,7 +43,7 @@ export const PRODUCTS: Product[] = [
     youtubeId: 'vXbFEIrTpg8',
     videoStart: 349,
     videoEnd: 443,
-    available: true,
+    available: false,
   },
   {
     id: 'carrot-apple',
@@ -54,7 +54,7 @@ export const PRODUCTS: Product[] = [
     youtubeId: 'vXbFEIrTpg8',
     videoStart: 443,
     videoEnd: 534,
-    available: true,
+    available: false,
   },
   {
     id: 'everything-green',
@@ -65,7 +65,7 @@ export const PRODUCTS: Product[] = [
     youtubeId: 'vXbFEIrTpg8',
     videoStart: 534,
     videoEnd: 641,
-    available: true,
+    available: false,
   },
 ];
 
@@ -75,3 +75,8 @@ export const GROUP_NAMES: GroupName[] = [
     GroupName.GroupC,
     GroupName.GroupD,
 ];
+
+export const YOUTH_MEMBERS = [
+  'Sifa', "'Ota", 'Faith', 'Sekina', 'Siaosi', 'Veni', 'Tane', 'Vei Lose',
+  'Lineni', 'Vatau', 'Maia', 'Ami'
+].sort();

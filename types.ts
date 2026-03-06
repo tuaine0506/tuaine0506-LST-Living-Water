@@ -1,3 +1,8 @@
+export interface Ingredient {
+  name: string;
+  available: boolean;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -12,12 +17,10 @@ export interface Product {
 
 export enum OrderSize {
   SevenShots = '7-Pack (2oz shots)',
-  TwelveOunce = '12oz Bottle',
 }
 
 export const ProductPrices: Record<OrderSize, number> = {
-  [OrderSize.SevenShots]: 50,
-  [OrderSize.TwelveOunce]: 50,
+  [OrderSize.SevenShots]: 35,
 };
 
 export interface CartItem {
@@ -54,9 +57,30 @@ export interface Order {
   orderNumber: string;
   zelleConfirmationNumber: string;
   isRecurring: boolean;
+  associatedMember?: string;
+  recurringWeeksFulfilled?: number;
+  recurringDates?: string[];
 }
 
 export interface ScheduleEvent {
     date: string; // ISO string
     group: GroupName;
+}
+
+export interface Volunteer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  group: GroupName;
+}
+
+export interface VolunteerAvailability {
+  id: string;
+  volunteerId: string;
+  dayOfWeek?: number; // 0-6 (Sunday-Saturday) if recurring
+  startTime: string; // e.g., "09:00"
+  endTime: string; // e.g., "12:00"
+  isRecurring: boolean;
+  specificDate?: string; // ISO string if not recurring
 }

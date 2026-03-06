@@ -1,14 +1,30 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { ProductPrices, DeliveryOption } from '../types';
-import { X, Trash2, Heart } from 'lucide-react';
+import { ProductPrices, DeliveryOption, OrderSize } from '../types';
+import { YOUTH_MEMBERS } from '../constants';
+import { X, Trash2, Heart, AlertTriangle, ShoppingCart, Send, PackageCheck, Truck, Plus, Minus, Calendar, Clock, Edit2, User } from 'lucide-react';
+import { MiniCalendar } from './MiniCalendar';
 
 const OrderForm: React.FC = () => {
-  const { cart, cartId, donationAmount, setDonationAmount, removeFromCart, updateCartQuantity, placeOrder, clearCart } = useApp();
+  const { cart, cartId, donationAmount, setDonationAmount, removeFromCart, updateCartQuantity, placeOrder, clearCart, products, ingredients: allIngredients, isDeliveryEnabled } = useApp();
   const [customerName, setCustomerName] = useState('');
   const [customerContact, setCustomerContact] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [deliveryOption, setDeliveryOption] = useState<DeliveryOption>('Pickup');
+
+  const isIngredientAvailable = (name: string) => {
+    const cleanName = name.replace(/\s*\(optional\)\s*/i, '').trim();
+    const ingredient = allIngredients.find(i => i.name === cleanName || i.name === name);
+    return ingredient ? ingredient.available : true;
+  };
+
+  const getMissingIngredients = (productId: string) => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return [];
+    return product.ingredients.filter(ing => !isIngredientAvailable(ing) && !ing.toLowerCase().includes('(optional)'));
+  };
+
+  const cartHasMissingIngredients = cart.some(item => getMissingIngredients(item.productId).length > 0);
   
   // Split address state
   const [addressStreet, setAddressStreet] = useState('');
@@ -19,6 +35,50 @@ const OrderForm: React.FC = () => {
   const [zelleChecked, setZelleChecked] = useState(false);
   const [zelleConfirmation, setZelleConfirmation] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
+  const [associatedMember, setAssociatedMember] = useState('');
+  const [recurringDates, setRecurringDates] = useState<string[]>([]);
+
+  React.useEffect(() => {
+    if (!isDeliveryEnabled && !isRecurring && deliveryOption === 'Delivery') {
+      setDeliveryOption('Pickup');
+    }
+  }, [isDeliveryEnabled, deliveryOption, isRecurring]);
+
+  const getInitialRecurringDates = () => {
+    const dates = [];
+    let d = new Date();
+    // Move to at least 2 days from now to allow for prep
+    d.setDate(d.getDate() + 2);
+    // Find next Sunday
+    while (d.getDay() !== 0) {
+      d.setDate(d.getDate() + 1);
+    }
+    for (let i = 0; i < 4; i++) {
+      dates.push(new Date(d).toISOString().split('T')[0]);
+      d.setDate(d.getDate() + 7);
+    }
+    return dates;
+  };
+
+  React.useEffect(() => {
+    if (isRecurring && recurringDates.length === 0) {
+      setRecurringDates(getInitialRecurringDates());
+    }
+  }, [isRecurring]);
+
+  const handleRecurringDateChange = (index: number, newDate: string) => {
+    const newDates = [...recurringDates];
+    newDates[index] = newDate;
+    
+    // Automatically recalculate subsequent weeks
+    let currentD = new Date(newDate + 'T12:00:00');
+    for (let i = index + 1; i < newDates.length; i++) {
+      currentD.setDate(currentD.getDate() + 7);
+      newDates[i] = currentD.toISOString().split('T')[0];
+    }
+    
+    setRecurringDates(newDates);
+  };
   
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [lastOrderDetails, setLastOrderDetails] = useState<{ deliveryOption: DeliveryOption } | null>(null);
@@ -27,18 +87,19 @@ const OrderForm: React.FC = () => {
     return acc + ProductPrices[item.size] * item.quantity;
   }, 0);
   
-  const productPrice = isRecurring ? cartTotal * 4 : cartTotal;
+  const productPrice = isRecurring 
+    ? cart.reduce((acc, item) => acc + 120 * item.quantity, 0) 
+    : cartTotal;
   const displayTotal = productPrice + donationAmount;
 
   // Phone number formatter: (xxx) xxx-xxxx
   const formatPhoneNumber = (value: string) => {
-    const phoneNumber = value.replace(/[^\d]/g, '');
-    const phoneNumberLength = phoneNumber.length;
-    if (phoneNumberLength < 4) return phoneNumber;
-    if (phoneNumberLength < 7) {
-      return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3)}`;
-    }
-    return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3, 6)}-${phoneNumber.slice(6, 10)}`;
+    const digits = value.replace(/\D/g, '').slice(0, 10);
+    const length = digits.length;
+
+    if (length <= 3) return digits;
+    if (length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -51,7 +112,8 @@ const OrderForm: React.FC = () => {
                         customerContact.length >= 14 && // (xxx) xxx-xxxx is 14 chars
                         zelleConfirmation && 
                         zelleChecked && 
-                        (deliveryOption === 'Pickup' || (deliveryOption === 'Delivery' && addressStreet && addressCity && addressState && addressZip));
+                        (deliveryOption === 'Pickup' || (deliveryOption === 'Delivery' && addressStreet && addressCity && addressState && addressZip)) &&
+                        (!isRecurring || (isRecurring && associatedMember));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +127,7 @@ const OrderForm: React.FC = () => {
       : undefined;
 
     setLastOrderDetails({ deliveryOption });
-    placeOrder(customerName, customerContact, customerEmail, deliveryOption, fullAddress, zelleConfirmation, isRecurring);
+    placeOrder(customerName, customerContact, customerEmail, deliveryOption, fullAddress, zelleConfirmation, isRecurring, isRecurring ? recurringDates : undefined, isRecurring ? associatedMember : undefined);
     
     // Reset form
     setCustomerName('');
@@ -79,6 +141,7 @@ const OrderForm: React.FC = () => {
     setZelleChecked(false);
     setZelleConfirmation('');
     setIsRecurring(false);
+    setAssociatedMember('');
     setIsSubmitted(true);
   };
 
@@ -103,253 +166,458 @@ const OrderForm: React.FC = () => {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-8">
       {cart.length === 0 && donationAmount === 0 ? (
-        <p className="text-center text-gray-500 py-4">Your order is empty. Add some wellness shots or a donation to support our fellowship!</p>
+        <div className="text-center py-12 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+          <ShoppingCart className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+          <p className="text-gray-500 font-medium">Your order is empty.</p>
+          <p className="text-sm text-gray-400 mt-1">Add some wellness shots or a donation to support our Youth & Young Adults!</p>
+        </div>
       ) : (
-        <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
-          {cart.map(item => (
-            <div key={`${item.productId}-${item.size}`} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
-              <div>
-                <p className="font-semibold text-brand-brown">{item.productName}</p>
-                <p className="text-sm text-gray-500">{item.size}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  min="1"
-                  value={item.quantity}
-                  onChange={(e) => updateCartQuantity(item.productId, item.size, parseInt(e.target.value))}
-                  className="w-16 p-1 border border-gray-300 rounded-md text-center bg-white"
-                />
-                <p className="w-16 text-right font-medium text-brand-green">${(ProductPrices[item.size] * item.quantity).toFixed(2)}</p>
-                <button type="button" onClick={() => removeFromCart(item.productId, item.size)} className="text-red-500 hover:text-red-700">
-                  <X size={20} />
-                </button>
+        <div className="space-y-6">
+          {/* Section 1: Your Selection */}
+          <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+            <div className="bg-brand-green/5 px-4 py-3 border-b border-brand-green/10 flex items-center gap-2">
+              <ShoppingCart size={18} className="text-brand-green" />
+              <h3 className="font-bold text-brand-green uppercase text-xs tracking-widest">Your Selection</h3>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              {cartHasMissingIngredients && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+                  <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={18} />
+                  <div className="text-xs text-red-800">
+                    <p className="font-bold">Inventory Alert</p>
+                    <p>Some items in your cart use ingredients currently out of stock. Fulfillment may be delayed.</p>
+                  </div>
+                </div>
+              )}
+              
+              <div className="space-y-3">
+                {cart.map(item => {
+                  const missing = getMissingIngredients(item.productId);
+                  const optionals = item.selectedOptionalIngredients || [];
+                  
+                  return (
+                    <div key={`${item.productId}-${item.size}-${JSON.stringify(optionals)}`} className={`flex flex-col p-4 bg-gray-50/50 border rounded-xl transition-all ${missing.length > 0 ? 'border-red-200 bg-red-50/30' : 'border-gray-100 hover:border-brand-light-green/50'}`}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-grow">
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-brand-brown leading-tight">{item.productName}</p>
+                            <span className="text-[10px] bg-brand-green/10 text-brand-green px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">
+                              {item.size === OrderSize.SevenShots ? '7-Pack' : item.size}
+                            </span>
+                          </div>
+                          
+                          {optionals.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {optionals.map((opt, i) => (
+                                <span key={i} className="text-[9px] bg-brand-orange/10 text-brand-orange px-1.5 py-0.5 rounded-full font-bold border border-brand-orange/20">
+                                  + {opt.replace(/\s*\(optional\)\s*/i, '').trim()}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {missing.length > 0 && (
+                            <p className="text-[10px] text-red-500 font-bold mt-2 uppercase flex items-center gap-1.5">
+                              <AlertTriangle size={10} />
+                              Missing: {missing.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                        
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                            <button
+                              type="button"
+                              onClick={() => updateCartQuantity(item.productId, item.size, optionals, item.quantity - 1)}
+                              className="p-1.5 hover:bg-gray-50 text-brand-brown transition-colors border-r border-gray-100"
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <span className="px-3 text-sm font-black text-brand-green min-w-[2rem] text-center">
+                              {item.quantity}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateCartQuantity(item.productId, item.size, optionals, item.quantity + 1)}
+                              className="p-1.5 hover:bg-gray-50 text-brand-brown transition-colors border-l border-gray-100"
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                          <p className="text-sm font-black text-brand-green">
+                            ${(ProductPrices[item.size] * item.quantity).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end">
+                        <button 
+                          type="button" 
+                          onClick={() => removeFromCart(item.productId, item.size, optionals)} 
+                          className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 hover:text-red-500 transition-colors uppercase tracking-widest"
+                        >
+                          <Trash2 size={12} /> Remove Item
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                
+                {donationAmount > 0 && (
+                  <div className="flex items-center justify-between p-4 bg-brand-orange/5 border border-brand-orange/20 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-brand-orange/10 rounded-lg">
+                        <Heart size={18} className="text-brand-orange" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-brand-brown">Direct Donation</p>
+                        <p className="text-[10px] text-brand-orange font-bold uppercase tracking-wider">Thank you for your support!</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <p className="font-bold text-brand-orange text-lg">${donationAmount.toFixed(2)}</p>
+                      <button 
+                        type="button" 
+                        onClick={() => setDonationAmount(0)} 
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          ))}
-          {donationAmount > 0 && (
-            <div className="flex items-center justify-between p-3 bg-brand-orange/5 border border-brand-orange/20 rounded-lg">
-                <div className="flex items-center gap-2">
-                    <Heart size={18} className="text-brand-orange" />
-                    <p className="font-semibold text-brand-brown">Direct Donation</p>
+          </div>
+
+          {/* Section 2: Recurring Option */}
+          {cart.length > 0 && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-2xl p-4 border border-brand-light-green/30 shadow-sm">
+                <label className="flex items-start cursor-pointer group">
+                  <div className="relative flex items-center mt-1">
+                    <input
+                      type="checkbox"
+                      checked={isRecurring}
+                      onChange={(e) => setIsRecurring(e.target.checked)}
+                      className="h-6 w-6 rounded-lg border-gray-300 text-brand-orange focus:ring-brand-orange bg-white transition-all cursor-pointer"
+                    />
+                  </div>
+                  <div className="ml-4">
+                    <span className="block text-sm font-bold text-brand-brown group-hover:text-brand-orange transition-colors">Make shot order recurring</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">4 weeks prepaid - <span className="text-brand-green font-bold">$120 best value!</span></span>
+                  </div>
+                </label>
+
+                {isRecurring && (
+                  <div className="mt-4 pl-10 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <label className="text-[10px] font-black text-brand-green uppercase tracking-widest block mb-2 flex items-center gap-1.5">
+                      <User size={12} />
+                      Select Youth/Young Adult to Support <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={associatedMember}
+                      onChange={(e) => setAssociatedMember(e.target.value)}
+                      required={isRecurring}
+                      className="w-full p-4 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-brand-orange outline-none transition-all font-bold text-brand-brown appearance-none cursor-pointer"
+                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2316A34A' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.5rem' }}
+                    >
+                      <option value="">-- Choose a name --</option>
+                      {YOUTH_MEMBERS.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-gray-400 mt-2 italic">Recurring orders directly support our youth and young adults.</p>
+                  </div>
+                )}
+
+                {/* Delivery Option moved here */}
+                {cart.length > 0 && (isDeliveryEnabled || isRecurring) && (
+                  <div className="mt-6 pt-6 border-t border-gray-100 space-y-4">
+                    <h4 className="text-[10px] font-black text-brand-green uppercase tracking-widest">Delivery Option</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <label className={`flex flex-col items-center p-4 border-2 rounded-2xl cursor-pointer transition-all ${deliveryOption === 'Pickup' ? 'bg-brand-green/5 border-brand-green' : 'bg-white border-gray-100 hover:border-brand-green/30'}`}>
+                        <input type="radio" name="delivery" value="Pickup" checked={deliveryOption === 'Pickup'} onChange={() => setDeliveryOption('Pickup')} className="sr-only" />
+                        <PackageCheck size={24} className={deliveryOption === 'Pickup' ? 'text-brand-green' : 'text-gray-300'} />
+                        <span className={`mt-2 font-bold text-sm ${deliveryOption === 'Pickup' ? 'text-brand-green' : 'text-gray-500'}`}>Pickup</span>
+                        <span className="text-[10px] text-gray-400 mt-0.5">At LSU Church</span>
+                      </label>
+                      <label className={`flex flex-col items-center p-4 border-2 rounded-2xl cursor-pointer transition-all ${deliveryOption === 'Delivery' ? 'bg-brand-green/5 border-brand-green' : 'bg-white border-gray-100 hover:border-brand-green/30'}`}>
+                        <input type="radio" name="delivery" value="Delivery" checked={deliveryOption === 'Delivery'} onChange={() => setDeliveryOption('Delivery')} className="sr-only" />
+                        <Truck size={24} className={deliveryOption === 'Delivery' ? 'text-brand-green' : 'text-gray-300'} />
+                        <span className={`mt-2 font-bold text-sm ${deliveryOption === 'Delivery' ? 'text-brand-green' : 'text-gray-500'}`}>Delivery</span>
+                        <span className="text-[10px] text-gray-400 mt-0.5">To Your Door</span>
+                      </label>
+                    </div>
+
+                    {deliveryOption === 'Delivery' && (
+                      <div className="space-y-4 p-5 bg-brand-green/5 rounded-2xl border border-brand-green/10 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-brand-green uppercase tracking-widest ml-1">Street Address</label>
+                          <input
+                            type="text"
+                            placeholder="123 Wellness Way"
+                            value={addressStreet}
+                            onChange={(e) => setAddressStreet(e.target.value)}
+                            required
+                            className="w-full p-4 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-brand-orange outline-none transition-all"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                          <div className="space-y-1 col-span-2 sm:col-span-1">
+                            <label className="text-[10px] font-bold text-brand-green uppercase tracking-widest ml-1">City</label>
+                            <input
+                              type="text"
+                              placeholder="Riverside"
+                              value={addressCity}
+                              onChange={(e) => setAddressCity(e.target.value)}
+                              required
+                              className="w-full p-4 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-brand-orange outline-none transition-all"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-brand-green uppercase tracking-widest ml-1">State</label>
+                            <input
+                              type="text"
+                              placeholder="CA"
+                              value={addressState}
+                              onChange={(e) => setAddressState(e.target.value)}
+                              required
+                              className="w-full p-4 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-brand-orange outline-none transition-all"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-brand-green uppercase tracking-widest ml-1">Zip Code</label>
+                            <input
+                              type="text"
+                              placeholder="92501"
+                              value={addressZip}
+                              onChange={(e) => setAddressZip(e.target.value)}
+                              required
+                              className="w-full p-4 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-brand-orange outline-none transition-all"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-brand-brown/60 italic text-center leading-tight">Note: For deliveries outside the Riverside area, we ship frozen. Additional shipping fees will apply.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {isRecurring && (
+                <div className="bg-brand-green/5 rounded-2xl p-5 border border-brand-green/10 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Calendar className="text-brand-green" size={20} />
+                    <h4 className="font-bold text-brand-green text-sm uppercase tracking-widest">Your 4-Week Schedule</h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {recurringDates.map((date, idx) => (
+                      <MiniCalendar 
+                        key={idx}
+                        selectedDate={date}
+                        onSelect={(newDate) => handleRecurringDateChange(idx, newDate)}
+                        weekLabel={`Week ${idx + 1}`}
+                      />
+                    ))}
+                  </div>
+                  
+                  <div className="mt-4 p-3 bg-white/50 rounded-xl border border-dashed border-brand-green/30">
+                    <p className="text-[10px] text-brand-brown/70 leading-relaxed">
+                      <span className="font-bold text-brand-green">Note:</span> You will receive your full cart selection (
+                      {cart.map(item => `${item.quantity}x ${item.productName}`).join(', ')}
+                      ) on each of these dates.
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <p className="font-bold text-brand-orange">${donationAmount.toFixed(2)}</p>
-                    <button type="button" onClick={() => setDonationAmount(0)} className="text-red-500 hover:text-red-700">
-                      <X size={20} />
-                    </button>
-                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      <div className="bg-white p-4 rounded-xl border border-brand-light-green/30 shadow-sm">
-        <div className="flex items-center gap-2 mb-3">
-            <Heart size={20} className="text-brand-orange" />
-            <h4 className="font-bold text-brand-green font-serif">Support with a Donation</h4>
-        </div>
-        <p className="text-xs text-brand-brown mb-3">Want to support the Fellowship without or in addition to shots? Enter a donation amount below.</p>
-        <div className="flex gap-2">
-            <div className="relative flex-grow">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">$</span>
-                <input
+          {/* Section 3: Support with Donation */}
+          <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+            <div className="bg-brand-orange/5 px-4 py-3 border-b border-brand-orange/10 flex items-center gap-2">
+              <Heart size={18} className="text-brand-orange" />
+              <h3 className="font-bold text-brand-orange uppercase text-xs tracking-widest">Support with a Donation</h3>
+            </div>
+            <div className="p-5">
+              <p className="text-xs text-brand-brown/70 mb-4 leading-relaxed">Want to support our Youth & Young Adults without or in addition to shots? Enter a donation amount below.</p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-grow">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                  <input
                     type="number"
                     min="0"
                     step="5"
                     placeholder="Enter amount"
-                    value={donationAmount || ''}
-                    onChange={(e) => setDonationAmount(parseFloat(e.target.value) || 0)}
-                    className="w-full pl-7 p-3 border border-gray-300 rounded-md bg-white focus:ring-brand-orange focus:border-brand-orange"
-                />
-            </div>
-            {donationAmount === 0 && (
-                <div className="flex gap-1">
-                    {[10, 20, 50].map(amt => (
-                        <button
-                            key={amt}
-                            type="button"
-                            onClick={() => setDonationAmount(amt)}
-                            className="bg-brand-cream text-brand-brown text-sm font-bold px-3 py-1 rounded-md hover:bg-brand-light-green transition-colors"
-                        >
-                            +${amt}
-                        </button>
-                    ))}
+                    value={donationAmount === 0 ? '' : donationAmount}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setDonationAmount(isNaN(val) ? 0 : val);
+                    }}
+                    className="w-full pl-8 p-4 border border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-brand-orange focus:border-transparent outline-none transition-all font-bold text-brand-brown"
+                  />
                 </div>
-            )}
-        </div>
-      </div>
-      
-      {(cart.length > 0 || donationAmount > 0) && (
-          <>
-             {cart.length > 0 && (
-                <div className="space-y-2">
-                    <label className="flex items-center cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={isRecurring}
-                            onChange={(e) => setIsRecurring(e.target.checked)}
-                            className="h-5 w-5 rounded border-gray-300 text-brand-orange focus:ring-brand-orange bg-white"
-                        />
-                        <span className="ml-3 text-sm font-medium text-brand-brown">Make shot order recurring (4 weeks prepaid)</span>
-                    </label>
+                <div className="flex gap-2">
+                  {[10, 20, 50].map(amt => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setDonationAmount(amt)}
+                      className={`flex-1 sm:flex-none px-4 py-4 rounded-xl font-bold text-sm transition-all border ${donationAmount === amt ? 'bg-brand-orange border-brand-orange text-white shadow-lg' : 'bg-white border-gray-200 text-brand-brown hover:border-brand-orange hover:text-brand-orange'}`}
+                    >
+                      +${amt}
+                    </button>
+                  ))}
                 </div>
-             )}
-
-            <div className="flex justify-between items-center text-xl font-bold pt-4 border-t">
-              <span className="text-brand-green">Total:</span>
-              <span className="text-brand-orange">${displayTotal.toFixed(2)}</span>
-            </div>
-
-            <div className="text-center p-3 bg-white border border-brand-light-green text-brand-brown rounded-lg">
-                <p className="font-semibold">Your Unique Order #: <span className="font-mono bg-gray-50 px-2 py-1 rounded border border-gray-200">{cartId || 'LW-TEMP'}</span></p>
-                <p className="text-sm mt-1">Please include this number in your Zelle payment memo/note.</p>
-            </div>
-
-            <div className="bg-blue-50 border-l-4 border-blue-500 text-blue-800 p-4 rounded-md" role="alert">
-              <p className="font-bold">Prepayment Required via Zelle</p>
-              <p className="text-sm mt-1">Please send the total amount of <strong>${displayTotal.toFixed(2)}</strong> to one of the following:</p>
-              <div className="text-sm font-mono bg-white border border-blue-200 px-2 py-2 rounded mt-1 space-y-1">
-                <p>(951) 707-7468 Kolini P.</p>
-                <p>(775) 376-0289 Teisi U.</p>
               </div>
-              <p className="text-xs mt-2">Your order will only be processed after payment is confirmed.</p>
             </div>
-
-            <div className="flex items-start">
-              <input
-                type="checkbox"
-                id="zelle"
-                checked={zelleChecked}
-                onChange={(e) => setZelleChecked(e.target.checked)}
-                className="h-5 w-5 rounded border-gray-300 text-brand-orange focus:ring-brand-orange mt-1 bg-white"
-              />
-              <label htmlFor="zelle" className="ml-3 text-sm text-brand-brown cursor-pointer">
-                I have sent the Zelle payment for the total amount.
-              </label>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                type="text"
-                placeholder="Your Name"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                required
-                className="w-full p-3 border border-gray-300 rounded-md bg-white focus:ring-brand-orange focus:border-brand-orange"
-              />
-              <input
-                type="tel"
-                placeholder="Phone (xxx) xxx-xxxx"
-                value={customerContact}
-                onChange={handlePhoneChange}
-                required
-                className="w-full p-3 border border-gray-300 rounded-md bg-white focus:ring-brand-orange focus:border-brand-orange"
-              />
+          </div>
+          
+          {/* Section 4: Checkout Details */}
+          <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+            <div className="bg-brand-green/5 px-4 py-3 border-b border-brand-green/10 flex items-center gap-2">
+              <PackageCheck size={18} className="text-brand-green" />
+              <h3 className="font-bold text-brand-green uppercase text-xs tracking-widest">Checkout Details</h3>
             </div>
             
-            <div>
-              <input
-                type="email"
-                placeholder="Email Address (Optional)"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-md bg-white focus:ring-brand-orange focus:border-brand-orange"
-              />
-              <p className="text-[10px] text-gray-500 mt-1 pl-1 italic">Provide an email if you prefer notifications via email.</p>
-            </div>
+            <div className="p-5 space-y-6">
+              {/* Total Summary */}
+              <div className="flex justify-between items-center p-4 bg-brand-green text-white rounded-xl shadow-lg">
+                <span className="text-lg font-bold uppercase tracking-wider">Total Amount</span>
+                <span className="text-3xl font-black">${displayTotal.toFixed(2)}</span>
+              </div>
 
-            <div>
-              <label htmlFor="zelleConfirmation" className="text-sm font-medium text-brand-brown block mb-2">Zelle Confirmation #</label>
-              <input
-                type="text"
-                id="zelleConfirmation"
-                placeholder="Enter Zelle confirmation code"
-                value={zelleConfirmation}
-                onChange={(e) => setZelleConfirmation(e.target.value)}
-                required
-                className="w-full p-3 border border-gray-300 rounded-md bg-white focus:ring-brand-orange focus:border-brand-orange"
-              />
-            </div>
+              {/* Order Number Info */}
+              <div className="p-4 bg-brand-cream rounded-xl border border-brand-light-green/30 text-center">
+                <p className="text-xs text-brand-brown uppercase font-bold tracking-widest mb-1">Your Unique Order #</p>
+                <p className="text-2xl font-mono font-black text-brand-green tracking-tighter">{cartId || 'LW-TEMP'}</p>
+                <p className="text-[10px] text-brand-brown/60 mt-2 italic leading-tight">Please include this number in your Zelle payment memo/note.</p>
+              </div>
 
-            {cart.length > 0 && (
-                <div>
-                  <label className="text-sm font-medium text-brand-brown block mb-2">Delivery Option</label>
-                  <div className="flex gap-4">
-                    <label className="flex items-center p-3 border rounded-lg bg-white has-[:checked]:bg-brand-light-green/20 has-[:checked]:border-brand-green w-full cursor-pointer transition-colors shadow-sm">
-                      <input type="radio" name="delivery" value="Pickup" checked={deliveryOption === 'Pickup'} onChange={() => setDeliveryOption('Pickup')} className="h-4 w-4 text-brand-orange focus:ring-brand-orange bg-white" />
-                      <span className="ml-2 font-medium text-brand-brown">Pickup</span>
-                    </label>
-                    <label className="flex items-center p-3 border rounded-lg bg-white has-[:checked]:bg-brand-light-green/20 has-[:checked]:border-brand-green w-full cursor-pointer transition-colors shadow-sm">
-                      <input type="radio" name="delivery" value="Delivery" checked={deliveryOption === 'Delivery'} onChange={() => setDeliveryOption('Delivery')} className="h-4 w-4 text-brand-orange focus:ring-brand-orange bg-white" />
-                      <span className="ml-2 font-medium text-brand-brown">Delivery</span>
-                    </label>
+              {/* Zelle Instructions */}
+              <div className="bg-blue-50 border border-blue-100 p-5 rounded-2xl">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping" />
+                  <p className="font-black text-blue-900 uppercase text-xs tracking-widest">Prepayment Required</p>
+                </div>
+                <p className="text-sm text-blue-800 leading-relaxed">Please send <strong>${displayTotal.toFixed(2)}</strong> via Zelle to:</p>
+                <div className="mt-3 space-y-2">
+                  <div className="p-3 bg-white border border-blue-200 rounded-xl flex justify-between items-center group hover:border-blue-400 transition-all cursor-pointer">
+                    <span className="font-mono font-bold text-blue-900">(951) 707-7468</span>
+                    <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Kolini P.</span>
+                  </div>
+                  <div className="p-3 bg-white border border-blue-200 rounded-xl flex justify-between items-center group hover:border-blue-400 transition-all cursor-pointer">
+                    <span className="font-mono font-bold text-blue-900">(775) 376-0289</span>
+                    <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Teisi U.</span>
                   </div>
                 </div>
-            )}
+                <p className="text-[10px] text-blue-600/70 mt-3 italic text-center">Order processing begins after payment confirmation.</p>
+              </div>
 
-            {deliveryOption === 'Delivery' && cart.length > 0 && (
-              <div className="space-y-3">
-                <label className="text-sm font-medium text-brand-brown block -mb-1">Delivery Address</label>
-                <input
-                  type="text"
-                  placeholder="Street Address"
-                  value={addressStreet}
-                  onChange={(e) => setAddressStreet(e.target.value)}
-                  required
-                  className="w-full p-3 border border-gray-300 rounded-md bg-white focus:ring-brand-orange focus:border-brand-orange"
-                />
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                   <input
-                    type="text"
-                    placeholder="City"
-                    value={addressCity}
-                    onChange={(e) => setAddressCity(e.target.value)}
-                    required
-                    className="md:col-span-2 w-full p-3 border border-gray-300 rounded-md bg-white focus:ring-brand-orange focus:border-brand-orange"
-                  />
+              {/* Zelle Confirmation */}
+              <div className="space-y-4 border border-gray-100 rounded-2xl p-5 bg-gray-50/50">
+                <label className="flex items-start cursor-pointer group">
+                  <div className="relative flex items-center mt-1">
+                    <input
+                      type="checkbox"
+                      id="zelle"
+                      checked={zelleChecked}
+                      onChange={(e) => setZelleChecked(e.target.checked)}
+                      className="h-6 w-6 rounded-lg border-gray-300 text-brand-orange focus:ring-brand-orange bg-white transition-all cursor-pointer"
+                    />
+                  </div>
+                  <div className="ml-4">
+                    <span className="block text-sm font-bold text-brand-brown group-hover:text-brand-orange transition-colors">I have sent the Zelle payment</span>
+                    <span className="block text-[10px] text-gray-500 uppercase tracking-widest mt-0.5">Required to place order</span>
+                  </div>
+                </label>
+
+                {zelleChecked && (
+                  <div className="pl-10 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <label htmlFor="zelleConfirmation" className="text-[10px] font-black text-brand-brown uppercase tracking-widest block mb-2">
+                      Zelle Confirmation # <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="zelleConfirmation"
+                      placeholder="Enter confirmation code"
+                      value={zelleConfirmation}
+                      onChange={(e) => setZelleConfirmation(e.target.value)}
+                      required
+                      className="w-full p-4 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-brand-orange focus:border-transparent outline-none transition-all font-mono text-sm"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Customer Info */}
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black text-brand-green uppercase tracking-widest border-b border-brand-green/10 pb-2">Customer Information</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+                    <input
+                      type="text"
+                      placeholder="John Doe"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      required
+                      className="w-full p-4 border border-gray-200 rounded-xl bg-gray-50/30 focus:bg-white focus:ring-2 focus:ring-brand-orange outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Phone Number</label>
+                    <input
+                      type="tel"
+                      placeholder="(xxx) xxx-xxxx"
+                      value={customerContact}
+                      onChange={handlePhoneChange}
+                      required
+                      className="w-full p-4 border border-gray-200 rounded-xl bg-gray-50/30 focus:bg-white focus:ring-2 focus:ring-brand-orange outline-none transition-all"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Email Address (Optional)</label>
                   <input
-                    type="text"
-                    placeholder="State"
-                    value={addressState}
-                    onChange={(e) => setAddressState(e.target.value)}
-                    required
-                    className="w-full p-3 border border-gray-300 rounded-md bg-white focus:ring-brand-orange focus:border-brand-orange"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Zip"
-                    value={addressZip}
-                    onChange={(e) => setAddressZip(e.target.value)}
-                    required
-                    className="w-full p-3 border border-gray-300 rounded-md bg-white focus:ring-brand-orange focus:border-brand-orange"
+                    type="email"
+                    placeholder="john@example.com"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    className="w-full p-4 border border-gray-200 rounded-xl bg-gray-50/30 focus:bg-white focus:ring-2 focus:ring-brand-orange outline-none transition-all"
                   />
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Note: For deliveries outside the Riverside area, we ship frozen. Additional shipping fees will apply.</p>
               </div>
-            )}
+            </div>
+          </div>
 
-             <div className="flex flex-col md:flex-row gap-4">
-                <button
-                  type="submit"
-                  className="w-full bg-brand-green text-white font-bold py-3 px-4 rounded-lg hover:bg-opacity-90 transition-colors disabled:bg-gray-400"
-                  disabled={!canPlaceOrder}
-                >
-                  Place Order
-                </button>
-                <button
-                    type="button"
-                    onClick={clearCart}
-                    className="w-full md:w-auto flex items-center justify-center gap-2 bg-gray-200 text-gray-700 font-bold py-3 px-4 rounded-lg hover:bg-gray-300 transition-colors"
-                >
-                    <Trash2 size={18}/> Clear
-                </button>
-             </div>
-          </>
+          {/* Final Actions */}
+          <div className="flex flex-col gap-4 pt-4">
+            <button
+              type="submit"
+              className="w-full bg-brand-orange text-white font-black py-5 px-6 rounded-2xl hover:bg-opacity-90 transition-all shadow-xl active:scale-[0.98] disabled:bg-gray-300 disabled:shadow-none disabled:active:scale-100 flex items-center justify-center gap-3 text-lg uppercase tracking-wider"
+              disabled={!canPlaceOrder}
+            >
+              <Send size={24} />
+              Place Order Now
+            </button>
+            <button
+              type="button"
+              onClick={clearCart}
+              className="w-full flex items-center justify-center gap-2 text-gray-400 font-bold py-3 px-4 rounded-xl hover:text-red-500 hover:bg-red-50 transition-all text-sm"
+            >
+              <Trash2 size={18} /> Clear Order & Start Over
+            </button>
+          </div>
+        </div>
       )}
-
     </form>
   );
 };

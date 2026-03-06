@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Product, Order, CartItem, GroupName, OrderSize, ProductPrices, ScheduleEvent, DeliveryOption } from '../types';
+import { Product, Order, CartItem, GroupName, OrderSize, ProductPrices, ScheduleEvent, DeliveryOption, Ingredient, Volunteer, VolunteerAvailability } from '../types';
 import { PRODUCTS, GROUP_NAMES } from '../constants';
 
 interface Notification {
@@ -18,19 +18,37 @@ interface AppContextType {
   schedule: ScheduleEvent[];
   isAdmin: boolean;
   notifications: Notification[];
+  ingredients: Ingredient[];
+  volunteers: Volunteer[];
+  availability: VolunteerAvailability[];
+  isDeliveryEnabled: boolean;
   addToCart: (productId: string, size: OrderSize, quantity: number, optionalIngredients: string[]) => void;
-  removeFromCart: (productId: string, size: OrderSize) => void;
-  updateCartQuantity: (productId: string, size: OrderSize, quantity: number) => void;
+  removeFromCart: (productId: string, size: OrderSize, optionalIngredients: string[]) => void;
+  updateCartQuantity: (productId: string, size: OrderSize, optionalIngredients: string[], quantity: number) => void;
   setDonationAmount: (amount: number) => void;
   clearCart: () => void;
-  placeOrder: (customerName: string, customerContact: string, customerEmail: string, deliveryOption: DeliveryOption, deliveryAddress: string | undefined, zelleConfirmationNumber: string, isRecurring: boolean) => void;
+  placeOrder: (customerName: string, customerContact: string, customerEmail: string, deliveryOption: DeliveryOption, deliveryAddress: string | undefined, zelleConfirmationNumber: string, isRecurring: boolean, recurringDates?: string[], associatedMember?: string) => void;
   updateOrder: (orderId: string, updatedData: Partial<Order>) => void;
   toggleOrderFulfilled: (orderId: string) => void;
-  login: (password: string) => boolean;
+  login: (password: string) => Promise<boolean>;
   logout: () => void;
-  changePassword: (newPassword: string) => void;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   toggleProductAvailability: (productId: string) => void;
+  updateProduct: (productId: string, updates: Partial<Product>) => Promise<void>;
+  toggleIngredientAvailability: (ingredientName: string) => void;
+  toggleDeliveryEnabled: () => void;
+  resetProducts: () => Promise<{ success: boolean; error?: string }>;
+  addProduct: (product: Omit<Product, 'available'>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  addIngredient: (ingredient: Omit<Ingredient, 'available'>) => Promise<void>;
+  deleteIngredient: (name: string) => Promise<void>;
   dismissNotification: (id: string) => void;
+  addVolunteer: (volunteer: Omit<Volunteer, 'id'>) => Promise<void>;
+  updateVolunteer: (id: string, updates: Partial<Volunteer>) => Promise<void>;
+  deleteVolunteer: (id: string) => Promise<void>;
+  addAvailability: (avail: Omit<VolunteerAvailability, 'id'>) => Promise<void>;
+  updateAvailability: (id: string, updates: Partial<VolunteerAvailability>) => Promise<void>;
+  deleteAvailability: (id: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -68,8 +86,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [donationAmount, setDonationAmount] = useLocalStorage<number>('donationAmount', 0);
   const [schedule, setSchedule] = useState<ScheduleEvent[]>([]);
   const [isAdmin, setIsAdmin] = useLocalStorage<boolean>('isAdmin', false);
-  const [adminPassword, setAdminPassword] = useLocalStorage<string>('adminPassword', 'admin123');
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
+  const [availability, setAvailability] = useState<VolunteerAvailability[]>([]);
+  const [isDeliveryEnabled, setIsDeliveryEnabled] = useLocalStorage<boolean>('isDeliveryEnabled', false);
 
   const addNotification = (message: string, type: 'info' | 'success' | 'warning' = 'info') => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -107,6 +128,35 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       })
       .catch(err => console.error('Failed to fetch products:', err));
 
+    fetch('/api/ingredients')
+      .then(res => res.json())
+      .then(data => {
+        if (data.length > 0) {
+          setIngredients(data);
+        } else {
+          // Extract unique ingredients from PRODUCTS
+          const uniqueIngredients = Array.from(new Set(PRODUCTS.flatMap(p => p.ingredients)));
+          const initialIngredients: Ingredient[] = uniqueIngredients.map(name => ({ name, available: true }));
+          
+          fetch('/api/ingredients/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(initialIngredients),
+          });
+        }
+      })
+      .catch(err => console.error('Failed to fetch ingredients:', err));
+
+    fetch('/api/volunteers')
+      .then(res => res.json())
+      .then(data => setVolunteers(data))
+      .catch(err => console.error('Failed to fetch volunteers:', err));
+
+    fetch('/api/availability')
+      .then(res => res.json())
+      .then(data => setAvailability(data))
+      .catch(err => console.error('Failed to fetch availability:', err));
+
     // WebSocket connection
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}`);
@@ -132,6 +182,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           break;
         case 'UPDATE_PRODUCTS':
           setProducts(data.payload);
+          break;
+        case 'UPDATE_INGREDIENTS':
+          setIngredients(data.payload);
+          break;
+        case 'UPDATE_VOLUNTEERS':
+          setVolunteers(data.payload);
+          break;
+        case 'UPDATE_AVAILABILITY':
+          setAvailability(data.payload);
           break;
         case 'NOTIFICATION':
           addNotification(data.payload.message, 'info');
@@ -162,10 +221,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     generateSchedule();
   }, []);
 
-  const login = (password: string): boolean => {
-    if (password === adminPassword) {
-      setIsAdmin(true);
-      return true;
+  const login = async (password: string): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (response.ok) {
+        setIsAdmin(true);
+        return true;
+      }
+    } catch (err) {
+      console.error('Login failed:', err);
     }
     return false;
   };
@@ -174,8 +242,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setIsAdmin(false);
   };
 
-  const changePassword = (newPassword: string) => {
-    setAdminPassword(newPassword);
+  const changePassword = async (currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        addNotification('Password changed successfully!', 'success');
+        return { success: true };
+      }
+      return { success: false, error: data.error };
+    } catch (err) {
+      console.error('Change password failed:', err);
+      return { success: false, error: 'Network error' };
+    }
   };
 
   const toggleProductAvailability = async (productId: string) => {
@@ -193,6 +276,104 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     } catch (err) {
       console.error('Failed to update product availability:', err);
+    }
+  };
+
+  const updateProduct = async (productId: string, updates: Partial<Product>) => {
+    try {
+      const response = await fetch(`/api/products/${productId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update product');
+      }
+    } catch (err) {
+      console.error('Failed to update product:', err);
+    }
+  };
+
+  const toggleIngredientAvailability = async (ingredientName: string) => {
+    const ingredient = ingredients.find(i => i.name === ingredientName);
+    if (!ingredient) return;
+
+    try {
+      const response = await fetch(`/api/ingredients/${encodeURIComponent(ingredientName)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ available: !ingredient.available }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update ingredient availability');
+      }
+    } catch (err) {
+      console.error('Failed to update ingredient availability:', err);
+    }
+  };
+
+  const toggleDeliveryEnabled = () => {
+    setIsDeliveryEnabled(prev => !prev);
+  };
+
+  const resetProducts = async () => {
+    try {
+      const response = await fetch('/api/products/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(PRODUCTS),
+      });
+      if (response.ok) {
+        const updatedProducts = await response.json();
+        setProducts(updatedProducts);
+        return { success: true };
+      }
+      return { success: false, error: 'Failed to sync products' };
+    } catch (error) {
+      console.error('Error resetting products:', error);
+      return { success: false, error: 'Network error' };
+    }
+  };
+
+  const addProduct = async (product: Omit<Product, 'available'>) => {
+    try {
+      const newProduct = { ...product, available: false };
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct),
+      });
+    } catch (err) {
+      console.error('Failed to add product:', err);
+    }
+  };
+
+  const deleteProduct = async (id: string) => {
+    try {
+      await fetch(`/api/products/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to delete product:', err);
+    }
+  };
+
+  const addIngredient = async (ingredient: Omit<Ingredient, 'available'>) => {
+    try {
+      const newIngredient = { ...ingredient, available: true };
+      await fetch('/api/ingredients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newIngredient),
+      });
+    } catch (err) {
+      console.error('Failed to add ingredient:', err);
+    }
+  };
+
+  const deleteIngredient = async (name: string) => {
+    try {
+      await fetch(`/api/ingredients/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to delete ingredient:', err);
     }
   };
 
@@ -230,9 +411,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   };
 
-  const removeFromCart = (productId: string, size: OrderSize) => {
+  const removeFromCart = (productId: string, size: OrderSize, optionalIngredients: string[]) => {
     setCart(prevCart => {
-        const newCart = prevCart.filter(item => !(item.productId === productId && item.size === size));
+        const newCart = prevCart.filter(item => !(
+          item.productId === productId && 
+          item.size === size && 
+          JSON.stringify(item.selectedOptionalIngredients) === JSON.stringify(optionalIngredients)
+        ));
         if (newCart.length === 0 && donationAmount <= 0) {
             setCartId(null);
         }
@@ -240,13 +425,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   };
 
-  const updateCartQuantity = (productId: string, size: OrderSize, quantity: number) => {
+  const updateCartQuantity = (productId: string, size: OrderSize, optionalIngredients: string[], quantity: number) => {
     if (quantity <= 0) {
-      removeFromCart(productId, size);
+      removeFromCart(productId, size, optionalIngredients);
     } else {
       setCart(prevCart =>
         prevCart.map(item =>
-          item.productId === productId && item.size === size
+          item.productId === productId && 
+          item.size === size && 
+          JSON.stringify(item.selectedOptionalIngredients) === JSON.stringify(optionalIngredients)
             ? { ...item, quantity }
             : item
         )
@@ -260,17 +447,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setDonationAmount(0);
   };
 
-  const placeOrder = async (customerName: string, customerContact: string, customerEmail: string, deliveryOption: DeliveryOption, deliveryAddress: string | undefined, zelleConfirmationNumber: string, isRecurring: boolean) => {
+  const placeOrder = async (customerName: string, customerContact: string, customerEmail: string, deliveryOption: DeliveryOption, deliveryAddress: string | undefined, zelleConfirmationNumber: string, isRecurring: boolean, recurringDates?: string[], associatedMember?: string) => {
     let currentId = cartId;
     if (!currentId) {
         currentId = `LW-${Date.now().toString().slice(-6)}`;
     }
     
-    const baseTotal = cart.reduce((total, item) => {
-        return total + (ProductPrices[item.size] * item.quantity);
-    }, 0);
-
-    const finalProductPrice = isRecurring ? baseTotal * 4 : baseTotal;
+    const finalProductPrice = isRecurring 
+      ? cart.reduce((total, item) => total + (120 * item.quantity), 0)
+      : cart.reduce((total, item) => total + (ProductPrices[item.size] * item.quantity), 0);
+    
     const finalPrice = finalProductPrice + donationAmount;
 
     const newOrder: Order = {
@@ -289,6 +475,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       orderNumber: currentId,
       zelleConfirmationNumber,
       isRecurring,
+      associatedMember,
+      recurringWeeksFulfilled: isRecurring ? 0 : undefined,
+      recurringDates: isRecurring ? recurringDates : undefined,
     };
 
     try {
@@ -327,8 +516,74 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const addVolunteer = async (volunteer: Omit<Volunteer, 'id'>) => {
+    const newVolunteer = { ...volunteer, id: `vol-${Date.now()}` };
+    try {
+      await fetch('/api/volunteers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newVolunteer),
+      });
+    } catch (err) {
+      console.error('Failed to add volunteer:', err);
+    }
+  };
+
+  const updateVolunteer = async (id: string, updates: Partial<Volunteer>) => {
+    try {
+      await fetch(`/api/volunteers/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+    } catch (err) {
+      console.error('Failed to update volunteer:', err);
+    }
+  };
+
+  const deleteVolunteer = async (id: string) => {
+    try {
+      await fetch(`/api/volunteers/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to delete volunteer:', err);
+    }
+  };
+
+  const addAvailability = async (avail: Omit<VolunteerAvailability, 'id'>) => {
+    const newAvail = { ...avail, id: `avail-${Date.now()}` };
+    try {
+      await fetch('/api/availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAvail),
+      });
+    } catch (err) {
+      console.error('Failed to add availability:', err);
+    }
+  };
+
+  const updateAvailability = async (id: string, updates: Partial<VolunteerAvailability>) => {
+    try {
+      await fetch(`/api/availability/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+    } catch (err) {
+      console.error('Failed to update availability:', err);
+    }
+  };
+
+  const deleteAvailability = async (id: string) => {
+    try {
+      await fetch(`/api/availability/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to delete availability:', err);
+    }
+  };
+
   return (
-    <AppContext.Provider value={{ products, orders, cart, cartId, donationAmount, setDonationAmount, schedule, isAdmin, notifications, addToCart, removeFromCart, updateCartQuantity, clearCart, placeOrder, updateOrder, toggleOrderFulfilled, login, logout, changePassword, toggleProductAvailability, dismissNotification }}>
+    <AppContext.Provider value={{ products, orders, cart, cartId, donationAmount, setDonationAmount, schedule, isAdmin, notifications, ingredients, volunteers, availability, isDeliveryEnabled, addToCart, removeFromCart, updateCartQuantity, clearCart, placeOrder, updateOrder, toggleOrderFulfilled, login, logout, changePassword, toggleProductAvailability, updateProduct, toggleIngredientAvailability, toggleDeliveryEnabled, resetProducts, addProduct, deleteProduct, addIngredient, deleteIngredient, dismissNotification, addVolunteer, updateVolunteer, deleteVolunteer, addAvailability, updateAvailability, deleteAvailability }}>
       {children}
     </AppContext.Provider>
   );

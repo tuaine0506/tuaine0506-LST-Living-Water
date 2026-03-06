@@ -55,13 +55,13 @@ const HomePage: React.FC = () => {
                 <PackageCheck size={18} className="text-brand-light-green" />
                 <h3 className="font-bold text-sm uppercase tracking-wide">Pick Up</h3>
               </div>
-              <p className="text-xs text-brand-cream/80 leading-relaxed">Collect your order this Sunday at the Fellowship or choose delivery.</p>
+              <p className="text-xs text-brand-cream/80 leading-relaxed">Collect your order this Sunday at La Sierra University Church or choose the delivery option if you subscribed for a recurring order.</p>
             </div>
 
             <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex flex-col justify-center items-center text-center">
               <Heart className="text-brand-orange mb-2" size={32} />
               <p className="text-[10px] font-bold uppercase text-brand-light-green tracking-widest">Support the Mission</p>
-              <p className="text-[11px] text-brand-cream/60 mt-1 italic">Every bottle supports our Fellowship outreach.</p>
+              <p className="text-[11px] text-brand-cream/60 mt-1 italic">Every bottle supports our Youth & Young Adults.</p>
             </div>
           </div>
         </div>
