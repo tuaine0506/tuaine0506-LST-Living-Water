@@ -97,7 +97,7 @@ const AppContent: React.FC = () => {
               <Droplets className="h-8 w-8 text-brand-orange" />
               <div className="flex flex-col">
                   <h1 className="text-xl md:text-2xl font-bold font-serif text-brand-cream leading-tight">Living Water</h1>
-                  <p className="text-[10px] uppercase tracking-widest text-brand-light-green font-semibold">La Sierra Tongan SDA Church</p>
+                  <p className="text-[10px] uppercase tracking-widest text-brand-light-green font-semibold">La Sierra Tongan SDA Fellowship</p>
               </div>
           </NavLink>
           <button 
