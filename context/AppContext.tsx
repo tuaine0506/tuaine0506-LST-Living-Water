@@ -79,7 +79,7 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<R
 
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [products, setProducts] = useLocalStorage<Product[]>('products', PRODUCTS);
+  const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [cart, setCart] = useLocalStorage<CartItem[]>('cart', []);
   const [cartId, setCartId] = useLocalStorage<string | null>('cartId', null);
@@ -90,7 +90,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
   const [availability, setAvailability] = useState<VolunteerAvailability[]>([]);
-  const [isDeliveryEnabled, setIsDeliveryEnabled] = useLocalStorage<boolean>('isDeliveryEnabled', false);
+  const [isDeliveryEnabled, setIsDeliveryEnabled] = useState<boolean>(false);
 
   const addNotification = (message: string, type: 'info' | 'success' | 'warning' = 'info') => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -157,6 +157,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       .then(data => setAvailability(data))
       .catch(err => console.error('Failed to fetch availability:', err));
 
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => setIsDeliveryEnabled(data.isDeliveryEnabled))
+      .catch(err => console.error('Failed to fetch settings:', err));
+
     // WebSocket connection
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}`);
@@ -169,6 +174,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (data.payload.products.length > 0) {
             setProducts(data.payload.products);
           }
+          if (data.payload.ingredients.length > 0) {
+            setIngredients(data.payload.ingredients);
+          }
+          if (data.payload.volunteers.length > 0) {
+            setVolunteers(data.payload.volunteers);
+          }
+          if (data.payload.availability.length > 0) {
+            setAvailability(data.payload.availability);
+          }
+          setIsDeliveryEnabled(data.payload.isDeliveryEnabled);
           break;
         case 'INIT_ORDERS':
           setOrders(data.payload);
@@ -191,6 +206,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           break;
         case 'UPDATE_AVAILABILITY':
           setAvailability(data.payload);
+          break;
+        case 'UPDATE_SETTINGS':
+          setIsDeliveryEnabled(data.payload.isDeliveryEnabled);
           break;
         case 'NOTIFICATION':
           addNotification(data.payload.message, 'info');
@@ -312,8 +330,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const toggleDeliveryEnabled = () => {
-    setIsDeliveryEnabled(prev => !prev);
+  const toggleDeliveryEnabled = async () => {
+    try {
+      const response = await fetch('/api/settings/delivery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !isDeliveryEnabled }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update delivery settings');
+      }
+    } catch (err) {
+      console.error('Failed to toggle delivery:', err);
+    }
   };
 
   const resetProducts = async () => {

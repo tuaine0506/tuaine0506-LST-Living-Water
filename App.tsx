@@ -8,7 +8,8 @@ import RecipesPage from './pages/RecipesPage';
 import AdminTutorialPage from './pages/AdminTutorialPage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import IngredientsPage from './pages/IngredientsPage';
-import { ShoppingCart, ClipboardList, BarChart3, CalendarDays, Lock, Unlock, Droplets, X, BookOpen, HelpCircle, PlayCircle, Truck, Leaf } from 'lucide-react';
+import OrderHistoryPage from './pages/OrderHistoryPage';
+import { ShoppingCart, ClipboardList, BarChart3, CalendarDays, Lock, Unlock, Droplets, X, BookOpen, HelpCircle, PlayCircle, Truck, Leaf, History } from 'lucide-react';
 import { useApp } from './context/AppContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -119,11 +120,12 @@ const AppContent: React.FC = () => {
           <Route path="/recipes" element={<ProtectedRoute><RecipesPage /></ProtectedRoute>} />
           <Route path="/ingredients" element={<ProtectedRoute><IngredientsPage /></ProtectedRoute>} />
           <Route path="/admin-tutorial" element={<ProtectedRoute><AdminTutorialPage /></ProtectedRoute>} />
+          <Route path="/order-history" element={<OrderHistoryPage />} />
         </Routes>
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-brand-green shadow-top-lg z-20 p-2 border-t border-brand-light-green/20">
-        <div className={`container mx-auto grid ${isAdmin ? 'grid-cols-8' : 'grid-cols-2'} gap-1 transition-all duration-300`}>
+        <div className={`container mx-auto grid ${isAdmin ? 'grid-cols-9' : 'grid-cols-3'} gap-1 transition-all duration-300`}>
           <NavLink to="/" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
             <div className="relative">
               <ShoppingCart className="h-5 w-5 md:h-6 md:w-6" />
@@ -137,14 +139,24 @@ const AppContent: React.FC = () => {
           </NavLink>
 
           {!isAdmin && (
-            <button onClick={scrollToHowTo} className={navLinkClasses}>
-              <HelpCircle className="h-5 w-5 md:h-6 md:w-6" />
-              <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">How to</span>
-            </button>
+            <>
+              <button onClick={scrollToHowTo} className={navLinkClasses}>
+                <HelpCircle className="h-5 w-5 md:h-6 md:w-6" />
+                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">How to</span>
+              </button>
+              <NavLink to="/order-history" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                <History className="h-5 w-5 md:h-6 md:w-6" />
+                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">History</span>
+              </NavLink>
+            </>
           )}
 
           {isAdmin && (
             <>
+              <NavLink to="/order-history" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                <History className="h-5 w-5 md:h-6 md:w-6" />
+                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">History</span>
+              </NavLink>
               <NavLink to="/schedule" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
                 <CalendarDays className="h-5 w-5 md:h-6 md:w-6" />
                 <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Dates</span>

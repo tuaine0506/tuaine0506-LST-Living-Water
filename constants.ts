@@ -67,6 +67,17 @@ export const PRODUCTS: Product[] = [
     videoEnd: 641,
     available: false,
   },
+  {
+    id: 'elderberry-zinc',
+    name: 'Elderberry Zinc Shot',
+    description: 'A potent blend to strengthen immunity and fight off illness.',
+    imageColor: '#4F46E5',
+    ingredients: ['Elderberry Extract', 'Zinc Gluconate (optional)', 'Ginger Root', 'Lemon', 'Water/Coconut Water'],
+    youtubeId: 'exampleVideoId123',
+    videoStart: 10,
+    videoEnd: 60,
+    available: false,
+  },
 ];
 
 export const GROUP_NAMES: GroupName[] = [

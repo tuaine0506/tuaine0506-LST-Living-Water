@@ -18,51 +18,82 @@ const HomePage: React.FC = () => {
       </div>
 
       {/* Tutorial Banner */}
-      <section id="how-to-order" className="bg-brand-green rounded-3xl p-8 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-brand-orange/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-brand-light-green/10 rounded-full -ml-12 -mb-12 blur-2xl"></div>
+      <section id="how-to-order" className="bg-brand-green rounded-3xl p-8 md:p-12 text-white shadow-xl relative overflow-hidden">
+        {/* Background Elements */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-brand-orange/10 rounded-full -mr-20 -mt-20 blur-3xl"></div>
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-brand-light-green/10 rounded-full -ml-20 -mb-20 blur-3xl"></div>
         
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-white/10 rounded-xl">
-              <HelpCircle className="text-brand-orange" size={24} />
+        <div className="relative z-10 max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full mb-4 backdrop-blur-sm border border-white/10">
+              <HelpCircle className="text-brand-orange" size={20} />
+              <span className="text-sm font-bold tracking-wide uppercase">Simple 3-Step Process</span>
             </div>
-            <h2 className="text-2xl font-bold font-serif">How to Order & Donate</h2>
+            <h2 className="text-3xl md:text-4xl font-bold font-serif mb-4">How to Order & Donate</h2>
+            <p className="text-brand-cream/80 max-w-2xl mx-auto">
+              Support our youth ministry by ordering delicious wellness shots or making a direct donation.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="space-y-3">
-              <div className="w-10 h-10 bg-brand-orange rounded-full flex items-center justify-center font-bold text-lg shadow-lg">1</div>
-              <div className="flex items-center gap-2">
-                <Smartphone size={18} className="text-brand-light-green" />
-                <h3 className="font-bold text-sm uppercase tracking-wide">Choose Shots</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+            {/* Connecting Line (Desktop) */}
+            <div className="hidden md:block absolute top-12 left-[16%] right-[16%] h-0.5 bg-gradient-to-r from-transparent via-brand-light-green/30 to-transparent z-0"></div>
+
+            {/* Step 1 */}
+            <div className="relative z-10 flex flex-col items-center text-center group">
+              <div className="w-24 h-24 bg-black/20 rounded-2xl border border-brand-light-green/20 flex items-center justify-center mb-6 shadow-lg group-hover:scale-105 transition-transform duration-300 relative backdrop-blur-sm">
+                <div className="absolute -top-3 -right-3 w-8 h-8 bg-brand-orange rounded-full flex items-center justify-center font-bold text-sm shadow-md border-2 border-brand-green">1</div>
+                <Smartphone size={40} className="text-brand-light-green" />
               </div>
-              <p className="text-xs text-brand-cream/80 leading-relaxed">Select your favorite immunity shots or enter a donation amount below.</p>
+              <h3 className="text-xl font-bold mb-3">Select & Customize</h3>
+              <p className="text-sm text-brand-cream/70 leading-relaxed px-4">
+                Choose your favorite immunity shots from the menu below. You can also add a direct donation to your order.
+              </p>
             </div>
 
-            <div className="space-y-3">
-              <div className="w-10 h-10 bg-brand-orange rounded-full flex items-center justify-center font-bold text-lg shadow-lg">2</div>
-              <div className="flex items-center gap-2">
-                <Send size={18} className="text-brand-light-green" />
-                <h3 className="font-bold text-sm uppercase tracking-wide">Zelle Payment</h3>
+            {/* Step 2 */}
+            <div className="relative z-10 flex flex-col items-center text-center group">
+              <div className="w-24 h-24 bg-black/20 rounded-2xl border border-brand-light-green/20 flex items-center justify-center mb-6 shadow-lg group-hover:scale-105 transition-transform duration-300 relative backdrop-blur-sm">
+                <div className="absolute -top-3 -right-3 w-8 h-8 bg-brand-orange rounded-full flex items-center justify-center font-bold text-sm shadow-md border-2 border-brand-green">2</div>
+                <Send size={40} className="text-brand-light-green" />
               </div>
-              <p className="text-xs text-brand-cream/80 leading-relaxed">Prepay via Zelle using the order # in the memo. (Orders are verified after payment).</p>
+              <h3 className="text-xl font-bold mb-3">Zelle Payment</h3>
+              <p className="text-sm text-brand-cream/70 leading-relaxed px-4">
+                Complete your payment via Zelle. Include your unique <span className="text-brand-orange font-bold">Order #</span> in the memo for quick verification.
+              </p>
             </div>
 
-            <div className="space-y-3">
-              <div className="w-10 h-10 bg-brand-orange rounded-full flex items-center justify-center font-bold text-lg shadow-lg">3</div>
-              <div className="flex items-center gap-2">
-                <PackageCheck size={18} className="text-brand-light-green" />
-                <h3 className="font-bold text-sm uppercase tracking-wide">Pick Up</h3>
+            {/* Step 3 */}
+            <div className="relative z-10 flex flex-col items-center text-center group">
+              <div className="w-24 h-24 bg-black/20 rounded-2xl border border-brand-light-green/20 flex items-center justify-center mb-6 shadow-lg group-hover:scale-105 transition-transform duration-300 relative backdrop-blur-sm">
+                <div className="absolute -top-3 -right-3 w-8 h-8 bg-brand-orange rounded-full flex items-center justify-center font-bold text-sm shadow-md border-2 border-brand-green">3</div>
+                <PackageCheck size={40} className="text-brand-light-green" />
               </div>
-              <p className="text-xs text-brand-cream/80 leading-relaxed">Collect your order this Sunday at La Sierra University Church or choose the delivery option if you subscribed for a recurring order.</p>
+              <h3 className="text-xl font-bold mb-3">Pickup or Delivery</h3>
+              <p className="text-sm text-brand-cream/70 leading-relaxed px-4">
+                Collect your shots this Sunday at <span className="font-bold text-white">LSU Church</span>, or get home delivery with a recurring subscription.
+              </p>
             </div>
+          </div>
 
-            <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex flex-col justify-center items-center text-center">
-              <Heart className="text-brand-orange mb-2" size={32} />
-              <p className="text-[10px] font-bold uppercase text-brand-light-green tracking-widest">Support the Mission</p>
-              <p className="text-[11px] text-brand-cream/60 mt-1 italic">Every bottle supports our Youth & Young Adults.</p>
+          {/* Donation Highlight */}
+          <div className="mt-12 bg-white/5 rounded-2xl p-6 border border-white/10 flex flex-col md:flex-row items-center justify-between gap-6 max-w-4xl mx-auto backdrop-blur-sm hover:bg-white/10 transition-colors">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-brand-orange/20 rounded-full shrink-0">
+                <Heart className="text-brand-orange" size={24} />
+              </div>
+              <div className="text-left">
+                <h4 className="font-bold text-lg">Just want to donate?</h4>
+                <p className="text-sm text-brand-cream/70">You can skip the shots and enter a donation amount directly in the order form.</p>
+              </div>
             </div>
+            <button 
+              onClick={() => document.getElementById('order-form')?.scrollIntoView({ behavior: 'smooth' })}
+              className="px-6 py-3 bg-brand-orange hover:bg-brand-orange/90 rounded-xl font-bold text-sm transition-colors whitespace-nowrap shadow-lg flex items-center gap-2"
+            >
+              <Heart size={16} />
+              Go to Donation Form
+            </button>
           </div>
         </div>
       </section>
@@ -75,7 +106,7 @@ const HomePage: React.FC = () => {
       </div>
       
       {/* Order Form Section */}
-      <div className="bg-white p-6 rounded-2xl shadow-lg border border-brand-light-green/50">
+      <div id="order-form" className="bg-white p-6 rounded-2xl shadow-lg border border-brand-light-green/50">
           <div className="flex items-center gap-3 mb-4">
               <ShoppingCart className="h-8 w-8 text-brand-orange"/>
               <h2 className="text-2xl font-bold text-brand-green font-serif">Place Your Order</h2>
