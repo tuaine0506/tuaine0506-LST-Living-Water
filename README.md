@@ -1,20 +1,39 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Persistent Database Setup
 
-# Run and deploy your AI Studio app
+This application supports both **SQLite** (default, for development) and **PostgreSQL** (for production persistence).
 
-This contains everything you need to run your app locally.
+## 1. Development (SQLite)
+By default, the app uses a local file named `database.sqlite`. No configuration is needed.
+**Warning:** On many cloud platforms (like Google Cloud Run, Heroku, Vercel), this file will be deleted every time the app restarts or redeploys.
 
-View your app in AI Studio: https://ai.studio/apps/8366019f-8038-4982-b45c-a782578458cf
+## 2. Production (PostgreSQL)
+To use a persistent database that survives restarts, you must use PostgreSQL.
 
-## Run Locally
+### Step 1: Get a Database
+You can get a free or paid PostgreSQL database from providers like:
+- **Supabase** (Free tier available)
+- **Neon** (Free tier available)
+- **Render** (Free tier available)
+- **Google Cloud SQL**
 
-**Prerequisites:**  Node.js
+### Step 2: Get the Connection String
+Once created, copy the **Connection String** (or Database URL). It looks like this:
+`postgres://user:password@hostname:port/database_name`
 
+### Step 3: Configure the App
+Set the `DATABASE_URL` environment variable in your hosting platform.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+**Example:**
+```
+DATABASE_URL=postgres://myuser:mypassword@ep-cool-frog-123456.us-east-2.aws.neon.tech/neondb
+```
+
+### Automatic Migration
+When the app starts with `DATABASE_URL` set:
+1. It will automatically connect to Postgres.
+2. It will create all necessary tables if they don't exist.
+3. It will migrate any existing `data.json` file into the database (one-time operation).
+
+## Troubleshooting
+- If the app fails to start, check that your `DATABASE_URL` is correct.
+- Ensure your database provider allows connections from your hosting platform (0.0.0.0/0).

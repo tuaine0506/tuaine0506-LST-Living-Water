@@ -2,13 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Play, RefreshCw } from 'lucide-react';
 
 interface LazyVideoPlayerProps {
-  src: string;
+  src?: string;
+  youtubeId?: string;
   startTime: number;
   endTime: number;
   imageColor: string;
 }
 
-const LazyVideoPlayer: React.FC<LazyVideoPlayerProps> = ({ src, startTime, endTime, imageColor }) => {
+const LazyVideoPlayer: React.FC<LazyVideoPlayerProps> = ({ src, youtubeId, startTime, endTime, imageColor }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -19,13 +20,13 @@ const LazyVideoPlayer: React.FC<LazyVideoPlayerProps> = ({ src, startTime, endTi
   };
 
   useEffect(() => {
-    if (isPlaying && videoRef.current) {
+    if (isPlaying && videoRef.current && !youtubeId) {
       videoRef.current.play().catch(err => {
         // Handle autoplay restrictions if necessary, though it's triggered by click
         console.error("Video play failed:", err);
       });
     }
-  }, [isLoaded, isPlaying]);
+  }, [isLoaded, isPlaying, youtubeId]);
 
   return (
     <div className="relative aspect-video rounded-2xl overflow-hidden border-2 border-brand-cream/30 bg-black shadow-inner group">
@@ -57,19 +58,30 @@ const LazyVideoPlayer: React.FC<LazyVideoPlayerProps> = ({ src, startTime, endTi
         </div>
       ) : (
         <div className="absolute inset-0 w-full h-full bg-black">
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            controls
-            playsInline
-            muted
-            preload="metadata"
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-          >
-            <source src={src} type="video/mp4" />
-            Your browser does not support the video tag.
-          </video>
+          {youtubeId ? (
+            <iframe
+              className="w-full h-full"
+              src={`https://www.youtube.com/embed/${youtubeId}?start=${startTime}&end=${endTime}&autoplay=1&rel=0`}
+              title="YouTube video player"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            ></iframe>
+          ) : (
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              controls
+              playsInline
+              muted
+              preload="metadata"
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+            >
+              {src && <source src={src} type="video/mp4" />}
+              Your browser does not support the video tag.
+            </video>
+          )}
         </div>
       )}
     </div>

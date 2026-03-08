@@ -278,7 +278,49 @@ const OrderHistoryPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="p-6 space-y-4">
+                  <div className="p-6 space-y-6">
+                    {order.isRecurring && (
+                      <div className="bg-teal-50/50 p-4 rounded-2xl border border-teal-100 space-y-3">
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-xs font-bold text-teal-800 uppercase tracking-widest flex items-center gap-2">
+                            <RefreshCw size={14} className="animate-spin-slow" />
+                            Recurring Schedule
+                          </h4>
+                          <span className="text-[10px] font-bold bg-teal-100 text-teal-700 px-2.5 py-1 rounded-full border border-teal-200">
+                            {order.recurringWeeksFulfilled || 0} of 4 Weeks Completed
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-4 gap-2">
+                          {[0, 1, 2, 3].map((weekIdx) => {
+                            const isCompleted = (order.recurringWeeksFulfilled || 0) > weekIdx;
+                            const date = order.recurringDates?.[weekIdx];
+                            const formattedDate = date ? format(new Date(date + 'T12:00:00'), 'MMM dd') : '---';
+
+                            return (
+                              <div 
+                                key={weekIdx}
+                                className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
+                                  isCompleted 
+                                    ? 'bg-teal-500 border-teal-600 text-white shadow-sm' 
+                                    : 'bg-white border-teal-100 text-teal-800'
+                                }`}
+                              >
+                                <span className="text-[8px] uppercase font-bold opacity-70">Week {weekIdx + 1}</span>
+                                <span className="text-[10px] font-mono font-bold">{formattedDate}</span>
+                                {isCompleted && <CheckCircle size={10} className="mt-1" />}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[10px] text-teal-700/70 italic text-center">
+                          {order.isFulfilled 
+                            ? "This recurring subscription has been fully completed." 
+                            : `Next scheduled pickup/delivery: ${order.recurringDates?.[order.recurringWeeksFulfilled || 0] ? format(new Date(order.recurringDates[order.recurringWeeksFulfilled || 0] + 'T12:00:00'), 'EEEE, MMMM do') : 'TBD'}`
+                          }
+                        </p>
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-3">
                         <h3 className="font-bold text-brand-green border-b border-brand-light-green/20 pb-1">Items</h3>

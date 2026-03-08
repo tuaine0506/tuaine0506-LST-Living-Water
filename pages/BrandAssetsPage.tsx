@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { GoogleGenAI } from "@google/genai";
 // Fixed: Added missing 'X' icon to lucide-react imports
-import { Download, RefreshCw, Palette, Image as ImageIcon, CheckCircle, Droplets, Video, Play, ExternalLink, Key, X } from 'lucide-react';
+import { Download, RefreshCw, Palette, Image as ImageIcon, CheckCircle, Droplets, Video, Play, ExternalLink, Key, X, Facebook, MessageSquare, Copy } from 'lucide-react';
 
 // Fixed: Removed the manual Window interface extension to avoid conflict with the environment's pre-defined AIStudio type.
 
 const BrandAssetsPage: React.FC = () => {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [generatedPost, setGeneratedPost] = useState<string | null>(null);
   const [isGeneratingLogo, setIsGeneratingLogo] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [isGeneratingPost, setIsGeneratingPost] = useState(false);
   const [videoStatus, setVideoStatus] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
@@ -18,7 +20,7 @@ const BrandAssetsPage: React.FC = () => {
     setError(null);
     try {
       // Correct initialization using named parameter as per guidelines.
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: {
@@ -48,6 +50,50 @@ const BrandAssetsPage: React.FC = () => {
     } finally {
       setIsGeneratingLogo(false);
     }
+  };
+
+  const generateSocialPost = async () => {
+    setIsGeneratingPost(true);
+    setError(null);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: {
+          parts: [
+            {
+              text: `Write an engaging, warm, and community-focused social media post (Facebook/Instagram) for the "La Sierra Tongan" church fellowship pages. 
+              
+              The post must:
+              1. Promote "Living Water" wellness juice shots (cold-pressed, fresh ingredients, immunity boosting).
+              2. Explicitly mention that ALL proceeds go to the Youth Ministry Fundraiser.
+              3. Be encouraging and spiritual but marketing-focused.
+              4. Include a call to action to order now.
+              5. Include relevant hashtags like #LaSierraTongan #LivingWater #YouthFundraiser #Wellness.
+              
+              Keep it under 200 words. Make it sound authentic to a church community.`,
+            },
+          ],
+        },
+      });
+
+      const text = response.text;
+      if (text) {
+        setGeneratedPost(text);
+      } else {
+        throw new Error("No text was generated.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to generate post.");
+    } finally {
+      setIsGeneratingPost(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    // Optional: You could add a temporary "Copied!" state here if desired, 
+    // but for now the button click is enough feedback.
   };
 
   const generateTutorialVideo = async () => {
@@ -83,7 +129,12 @@ const BrandAssetsPage: React.FC = () => {
 
       const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
       if (downloadLink) {
-        const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+        const response = await fetch(downloadLink, {
+          method: 'GET',
+          headers: {
+            'x-goog-api-key': process.env.API_KEY || '',
+          },
+        });
         const blob = await response.blob();
         setVideoUrl(URL.createObjectURL(blob));
       } else {
@@ -216,6 +267,82 @@ const BrandAssetsPage: React.FC = () => {
             )}
           </div>
         </div>
+        <div className="bg-white rounded-3xl shadow-xl border border-brand-light-green/20 overflow-hidden md:col-span-2">
+          <div className="p-8 space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-brand-green/10 rounded-2xl">
+                <MessageSquare className="text-brand-green" size={24} />
+              </div>
+              <h2 className="text-xl font-bold text-brand-green font-serif">Social Media Post Generator</h2>
+            </div>
+            
+            <p className="text-sm text-brand-brown/70 leading-relaxed">
+              Instantly create a daily marketing post for La Sierra Tongan pages. Combines wellness benefits with our youth fundraiser mission.
+            </p>
+
+            <button
+              onClick={generateSocialPost}
+              disabled={isGeneratingPost}
+              className={`w-full py-4 rounded-2xl font-bold text-white shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                isGeneratingPost ? 'bg-gray-400' : 'bg-brand-green hover:bg-opacity-90'
+              }`}
+            >
+              {isGeneratingPost ? <RefreshCw className="animate-spin" size={20} /> : <MessageSquare size={20} />}
+              {isGeneratingPost ? 'Writing Post...' : 'Generate Daily Post'}
+            </button>
+
+            {generatedPost && (
+              <div className="mt-6 bg-gray-50 rounded-2xl border border-gray-200 p-6 relative group">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Generated Content</h3>
+                <p className="text-brand-brown whitespace-pre-wrap font-medium leading-relaxed">
+                  {generatedPost}
+                </p>
+                <button
+                  onClick={() => copyToClipboard(generatedPost)}
+                  className="absolute top-4 right-4 p-2 bg-white rounded-xl shadow-sm border border-gray-200 text-gray-500 hover:text-brand-green hover:border-brand-green transition-colors"
+                  title="Copy to clipboard"
+                >
+                  <Copy size={18} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl shadow-xl border border-brand-light-green/20 overflow-hidden md:col-span-2">
+          <div className="p-8 space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-blue-100 rounded-2xl">
+                <Facebook className="text-blue-600" size={24} />
+              </div>
+              <h2 className="text-xl font-bold text-brand-green font-serif">Social Media Monitoring</h2>
+            </div>
+            
+            <p className="text-sm text-brand-brown/70 leading-relaxed">
+              Quickly access Facebook to find recent videos and posts from key community members.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { name: 'La Sierra Tongan', query: 'La Sierra Tongan' },
+                { name: 'Mele Vakalahi Uaine', query: 'Mele Vakalahi Uaine' },
+                { name: 'Toakase Vunileva', query: 'Toakase Vunileva' }
+              ].map((person) => (
+                <a
+                  key={person.name}
+                  href={`https://www.facebook.com/search/posts?q=${encodeURIComponent(person.query)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all group"
+                >
+                  <span className="font-bold text-brand-brown group-hover:text-blue-700">{person.name}</span>
+                  <ExternalLink size={16} className="text-gray-400 group-hover:text-blue-500" />
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {error && (

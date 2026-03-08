@@ -4,57 +4,24 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import fs from 'fs/promises';
 import path from 'path';
-import Database from 'better-sqlite3';
 import nodemailer from 'nodemailer';
+import { db } from './db';
 
-const DB_FILE = path.join(process.cwd(), 'database.sqlite');
 const DATA_FILE = path.join(process.cwd(), 'data.json');
 
-// Initialize Database
-const db = new Database(DB_FILE);
-
-// Create Tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS system (
-    key TEXT PRIMARY KEY,
-    value TEXT
-  );
-  CREATE TABLE IF NOT EXISTS products (
-    id TEXT PRIMARY KEY,
-    data TEXT
-  );
-  CREATE TABLE IF NOT EXISTS orders (
-    id TEXT PRIMARY KEY,
-    data TEXT
-  );
-  CREATE TABLE IF NOT EXISTS ingredients (
-    name TEXT PRIMARY KEY,
-    data TEXT
-  );
-  CREATE TABLE IF NOT EXISTS volunteers (
-    id TEXT PRIMARY KEY,
-    data TEXT
-  );
-  CREATE TABLE IF NOT EXISTS availability (
-    id TEXT PRIMARY KEY,
-    data TEXT
-  );
-  CREATE TABLE IF NOT EXISTS verification_codes (
-    identifier TEXT PRIMARY KEY,
-    code TEXT,
-    expires_at INTEGER
-  );
-`);
-
 // Helper to initialize default system values
-const initSystem = () => {
-  const adminPassword = db.prepare('SELECT value FROM system WHERE key = ?').get('adminPassword');
+const initSystem = async () => {
+  const adminPassword = await db.getSystemValue('adminPassword');
   if (!adminPassword) {
-    db.prepare('INSERT INTO system (key, value) VALUES (?, ?)').run('adminPassword', 'admin123');
+    await db.setSystemValue('adminPassword', 'admin123');
   }
-  const isDeliveryEnabled = db.prepare('SELECT value FROM system WHERE key = ?').get('isDeliveryEnabled');
+  const isDeliveryEnabled = await db.getSystemValue('isDeliveryEnabled');
   if (!isDeliveryEnabled) {
-    db.prepare('INSERT INTO system (key, value) VALUES (?, ?)').run('isDeliveryEnabled', 'false');
+    await db.setSystemValue('isDeliveryEnabled', 'false');
+  }
+  const allowedAdminEmails = await db.getSystemValue('allowedAdminEmails');
+  if (!allowedAdminEmails) {
+    await db.setSystemValue('allowedAdminEmails', '');
   }
 };
 
@@ -95,29 +62,19 @@ const initEmail = async () => {
 const migrateData = async () => {
   try {
     await fs.access(DATA_FILE);
-    console.log('Found data.json, migrating to SQLite...');
+    console.log('Found data.json, migrating to Database...');
     const dataStr = await fs.readFile(DATA_FILE, 'utf-8');
     const data = JSON.parse(dataStr);
 
-    const insertSystem = db.prepare('INSERT OR REPLACE INTO system (key, value) VALUES (?, ?)');
-    const insertProduct = db.prepare('INSERT OR REPLACE INTO products (id, data) VALUES (?, ?)');
-    const insertOrder = db.prepare('INSERT OR REPLACE INTO orders (id, data) VALUES (?, ?)');
-    const insertIngredient = db.prepare('INSERT OR REPLACE INTO ingredients (name, data) VALUES (?, ?)');
-    const insertVolunteer = db.prepare('INSERT OR REPLACE INTO volunteers (id, data) VALUES (?, ?)');
-    const insertAvailability = db.prepare('INSERT OR REPLACE INTO availability (id, data) VALUES (?, ?)');
+    if (data.adminPassword) await db.setSystemValue('adminPassword', data.adminPassword);
+    if (data.isDeliveryEnabled !== undefined) await db.setSystemValue('isDeliveryEnabled', String(data.isDeliveryEnabled));
+    
+    if (data.products) await db.bulkInsert('products', data.products, 'id');
+    if (data.orders) await db.bulkInsert('orders', data.orders, 'id');
+    if (data.ingredients) await db.bulkInsert('ingredients', data.ingredients, 'name');
+    if (data.volunteers) await db.bulkInsert('volunteers', data.volunteers, 'id');
+    if (data.availability) await db.bulkInsert('availability', data.availability, 'id');
 
-    const transaction = db.transaction(() => {
-      if (data.adminPassword) insertSystem.run('adminPassword', data.adminPassword);
-      if (data.isDeliveryEnabled !== undefined) insertSystem.run('isDeliveryEnabled', String(data.isDeliveryEnabled));
-      
-      data.products?.forEach((p: any) => insertProduct.run(p.id, JSON.stringify(p)));
-      data.orders?.forEach((o: any) => insertOrder.run(o.id, JSON.stringify(o)));
-      data.ingredients?.forEach((i: any) => insertIngredient.run(i.name, JSON.stringify(i)));
-      data.volunteers?.forEach((v: any) => insertVolunteer.run(v.id, JSON.stringify(v)));
-      data.availability?.forEach((a: any) => insertAvailability.run(a.id, JSON.stringify(a)));
-    });
-
-    transaction();
     console.log('Migration complete.');
     await fs.rename(DATA_FILE, `${DATA_FILE}.bak`);
   } catch (err) {
@@ -126,7 +83,8 @@ const migrateData = async () => {
 };
 
 async function startServer() {
-  initSystem();
+  await db.init();
+  await initSystem();
   await initEmail();
   await migrateData();
 
@@ -138,16 +96,16 @@ async function startServer() {
   app.use(express.json());
 
   // WebSocket connection handling
-  wss.on('connection', (ws) => {
+  wss.on('connection', async (ws) => {
     console.log('Client connected');
     
     // Fetch current state
-    const products = db.prepare('SELECT data FROM products').all().map((row: any) => JSON.parse(row.data));
-    const orders = db.prepare('SELECT data FROM orders').all().map((row: any) => JSON.parse(row.data));
-    const ingredients = db.prepare('SELECT data FROM ingredients').all().map((row: any) => JSON.parse(row.data));
-    const volunteers = db.prepare('SELECT data FROM volunteers').all().map((row: any) => JSON.parse(row.data));
-    const availability = db.prepare('SELECT data FROM availability').all().map((row: any) => JSON.parse(row.data));
-    const isDeliveryEnabled = db.prepare('SELECT value FROM system WHERE key = ?').get('isDeliveryEnabled') as { value: string };
+    const products = await db.getAll('products');
+    const orders = await db.getAll('orders');
+    const ingredients = await db.getAll('ingredients');
+    const volunteers = await db.getAll('volunteers');
+    const availability = await db.getAll('availability');
+    const isDeliveryEnabledStr = await db.getSystemValue('isDeliveryEnabled');
 
     ws.send(JSON.stringify({ 
       type: 'INIT_DATA', 
@@ -157,7 +115,7 @@ async function startServer() {
         ingredients, 
         volunteers, 
         availability,
-        isDeliveryEnabled: isDeliveryEnabled?.value === 'true'
+        isDeliveryEnabled: isDeliveryEnabledStr === 'true'
       } 
     }));
 
@@ -177,12 +135,7 @@ async function startServer() {
     const { identifier } = req.body;
     
     try {
-      // Use SQL query with json_extract for efficiency
-      const hasOrders = db.prepare(`
-        SELECT 1 FROM orders 
-        WHERE json_extract(data, '$.customerEmail') = ? 
-        OR json_extract(data, '$.customerContact') = ?
-      `).get(identifier, identifier);
+      const hasOrders = await db.hasOrderForIdentifier(identifier);
 
       if (!hasOrders) {
         return res.status(404).json({ error: 'No orders found for this identifier' });
@@ -191,7 +144,7 @@ async function startServer() {
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
 
-      db.prepare('INSERT OR REPLACE INTO verification_codes (identifier, code, expires_at) VALUES (?, ?, ?)').run(identifier, code, expiresAt);
+      await db.saveVerificationCode(identifier, code, expiresAt);
 
       if (identifier.includes('@') && transporter) {
         const info = await transporter.sendMail({
@@ -219,10 +172,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/verify/check', (req, res) => {
+  app.post('/api/verify/check', async (req, res) => {
     const { identifier, code } = req.body;
     
-    const record = db.prepare('SELECT * FROM verification_codes WHERE identifier = ?').get(identifier) as any;
+    const record = await db.getVerificationCode(identifier);
     
     if (!record) {
       return res.status(400).json({ error: 'Invalid or expired code' });
@@ -237,29 +190,53 @@ async function startServer() {
     }
     
     // Success - delete code to prevent reuse
-    db.prepare('DELETE FROM verification_codes WHERE identifier = ?').run(identifier);
+    await db.deleteVerificationCode(identifier);
     
     res.json({ success: true });
   });
 
   // API Routes - Admin
-  app.post('/api/admin/login', (req, res) => {
+  app.post('/api/admin/login', async (req, res) => {
     const { password } = req.body;
-    const adminPassword = db.prepare('SELECT value FROM system WHERE key = ?').get('adminPassword') as { value: string };
+    const adminPassword = await db.getSystemValue('adminPassword');
     
-    if (password === adminPassword.value) {
-      res.json({ success: true });
+    if (password === adminPassword) {
+      const sessionToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+      await db.saveSession(sessionToken, expiresAt);
+      res.json({ success: true, token: sessionToken });
     } else {
       res.status(401).json({ success: false, error: 'Invalid password' });
     }
   });
 
-  app.post('/api/admin/change-password', (req, res) => {
-    const { currentPassword, newPassword } = req.body;
-    const adminPassword = db.prepare('SELECT value FROM system WHERE key = ?').get('adminPassword') as { value: string };
+  app.post('/api/admin/verify', async (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(401).json({ success: false });
 
-    if (currentPassword === adminPassword.value) {
-      db.prepare('UPDATE system SET value = ? WHERE key = ?').run(newPassword, 'adminPassword');
+    const session = await db.getSession(token);
+    if (session && session.expires_at > Date.now()) {
+      res.json({ success: true });
+    } else {
+      if (session) await db.deleteSession(token);
+      res.status(401).json({ success: false });
+    }
+  });
+
+  app.post('/api/admin/logout', async (req, res) => {
+    const { token } = req.body;
+    if (token) {
+      await db.deleteSession(token);
+    }
+    res.json({ success: true });
+  });
+
+  app.post('/api/admin/change-password', async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    const adminPassword = await db.getSystemValue('adminPassword');
+
+    if (currentPassword === adminPassword) {
+      await db.setSystemValue('adminPassword', newPassword);
       res.json({ success: true });
     } else {
       res.status(401).json({ success: false, error: 'Current password incorrect' });
@@ -267,57 +244,50 @@ async function startServer() {
   });
 
   // API Routes - Products
-  app.get('/api/products', (req, res) => {
-    const products = db.prepare('SELECT data FROM products').all().map((row: any) => JSON.parse(row.data));
+  app.get('/api/products', async (req, res) => {
+    const products = await db.getAll('products');
     res.json(products);
   });
 
-  app.post('/api/products/sync', (req, res) => {
-    const count = db.prepare('SELECT count(*) as count FROM products').get() as { count: number };
-    if (count.count === 0 && Array.isArray(req.body)) {
-      const insert = db.prepare('INSERT INTO products (id, data) VALUES (?, ?)');
-      const transaction = db.transaction((products) => {
-        for (const p of products) insert.run(p.id, JSON.stringify(p));
-      });
-      transaction(req.body);
-      const products = req.body;
-      broadcast({ type: 'UPDATE_PRODUCTS', payload: products });
-      res.json(products);
+  app.post('/api/products/sync', async (req, res) => {
+    const products = await db.getAll('products');
+    if (products.length === 0 && Array.isArray(req.body)) {
+      await db.bulkInsert('products', req.body, 'id');
+      broadcast({ type: 'UPDATE_PRODUCTS', payload: req.body });
+      res.json(req.body);
     } else {
-      const products = db.prepare('SELECT data FROM products').all().map((row: any) => JSON.parse(row.data));
       res.json(products);
     }
   });
 
-  app.post('/api/products', (req, res) => {
+  app.post('/api/products', async (req, res) => {
     const newProduct = req.body;
-    db.prepare('INSERT INTO products (id, data) VALUES (?, ?)').run(newProduct.id, JSON.stringify(newProduct));
+    await db.insert('products', newProduct.id, newProduct);
     
-    const products = db.prepare('SELECT data FROM products').all().map((row: any) => JSON.parse(row.data));
+    const products = await db.getAll('products');
     broadcast({ type: 'UPDATE_PRODUCTS', payload: products });
     res.status(201).json(newProduct);
   });
 
-  app.delete('/api/products/:id', (req, res) => {
+  app.delete('/api/products/:id', async (req, res) => {
     const { id } = req.params;
-    db.prepare('DELETE FROM products WHERE id = ?').run(id);
+    await db.delete('products', id);
     
-    const products = db.prepare('SELECT data FROM products').all().map((row: any) => JSON.parse(row.data));
+    const products = await db.getAll('products');
     broadcast({ type: 'UPDATE_PRODUCTS', payload: products });
     res.status(204).send();
   });
 
-  app.patch('/api/products/:id', (req, res) => {
+  app.patch('/api/products/:id', async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
     
-    const row = db.prepare('SELECT data FROM products WHERE id = ?').get(id) as { data: string };
-    if (row) {
-      const product = JSON.parse(row.data);
+    const product = await db.getById<any>('products', id);
+    if (product) {
       const updatedProduct = { ...product, ...updates };
-      db.prepare('UPDATE products SET data = ? WHERE id = ?').run(JSON.stringify(updatedProduct), id);
+      await db.update('products', id, updatedProduct);
       
-      const products = db.prepare('SELECT data FROM products').all().map((row: any) => JSON.parse(row.data));
+      const products = await db.getAll('products');
       broadcast({ type: 'UPDATE_PRODUCTS', payload: products });
       res.json(updatedProduct);
     } else {
@@ -326,57 +296,50 @@ async function startServer() {
   });
 
   // API Routes - Ingredients
-  app.get('/api/ingredients', (req, res) => {
-    const ingredients = db.prepare('SELECT data FROM ingredients').all().map((row: any) => JSON.parse(row.data));
+  app.get('/api/ingredients', async (req, res) => {
+    const ingredients = await db.getAll('ingredients');
     res.json(ingredients);
   });
 
-  app.post('/api/ingredients/sync', (req, res) => {
-    const count = db.prepare('SELECT count(*) as count FROM ingredients').get() as { count: number };
-    if (count.count === 0 && Array.isArray(req.body)) {
-      const insert = db.prepare('INSERT INTO ingredients (name, data) VALUES (?, ?)');
-      const transaction = db.transaction((ingredients) => {
-        for (const i of ingredients) insert.run(i.name, JSON.stringify(i));
-      });
-      transaction(req.body);
-      const ingredients = req.body;
-      broadcast({ type: 'UPDATE_INGREDIENTS', payload: ingredients });
-      res.json(ingredients);
+  app.post('/api/ingredients/sync', async (req, res) => {
+    const ingredients = await db.getAll('ingredients');
+    if (ingredients.length === 0 && Array.isArray(req.body)) {
+      await db.bulkInsert('ingredients', req.body, 'name');
+      broadcast({ type: 'UPDATE_INGREDIENTS', payload: req.body });
+      res.json(req.body);
     } else {
-      const ingredients = db.prepare('SELECT data FROM ingredients').all().map((row: any) => JSON.parse(row.data));
       res.json(ingredients);
     }
   });
 
-  app.post('/api/ingredients', (req, res) => {
+  app.post('/api/ingredients', async (req, res) => {
     const newIngredient = req.body;
-    db.prepare('INSERT INTO ingredients (name, data) VALUES (?, ?)').run(newIngredient.name, JSON.stringify(newIngredient));
+    await db.insert('ingredients', newIngredient.name, newIngredient);
     
-    const ingredients = db.prepare('SELECT data FROM ingredients').all().map((row: any) => JSON.parse(row.data));
+    const ingredients = await db.getAll('ingredients');
     broadcast({ type: 'UPDATE_INGREDIENTS', payload: ingredients });
     res.status(201).json(newIngredient);
   });
 
-  app.delete('/api/ingredients/:name', (req, res) => {
+  app.delete('/api/ingredients/:name', async (req, res) => {
     const { name } = req.params;
-    db.prepare('DELETE FROM ingredients WHERE name = ?').run(name);
+    await db.delete('ingredients', name);
     
-    const ingredients = db.prepare('SELECT data FROM ingredients').all().map((row: any) => JSON.parse(row.data));
+    const ingredients = await db.getAll('ingredients');
     broadcast({ type: 'UPDATE_INGREDIENTS', payload: ingredients });
     res.status(204).send();
   });
 
-  app.patch('/api/ingredients/:name', (req, res) => {
+  app.patch('/api/ingredients/:name', async (req, res) => {
     const { name } = req.params;
     const updates = req.body;
     
-    const row = db.prepare('SELECT data FROM ingredients WHERE name = ?').get(name) as { data: string };
-    if (row) {
-      const ingredient = JSON.parse(row.data);
+    const ingredient = await db.getById<any>('ingredients', name);
+    if (ingredient) {
       const updatedIngredient = { ...ingredient, ...updates };
-      db.prepare('UPDATE ingredients SET data = ? WHERE name = ?').run(JSON.stringify(updatedIngredient), name);
+      await db.update('ingredients', name, updatedIngredient);
       
-      const ingredients = db.prepare('SELECT data FROM ingredients').all().map((row: any) => JSON.parse(row.data));
+      const ingredients = await db.getAll('ingredients');
       broadcast({ type: 'UPDATE_INGREDIENTS', payload: ingredients });
       res.json(updatedIngredient);
     } else {
@@ -385,28 +348,27 @@ async function startServer() {
   });
 
   // API Routes - Orders
-  app.get('/api/orders', (req, res) => {
-    const orders = db.prepare('SELECT data FROM orders').all().map((row: any) => JSON.parse(row.data));
+  app.get('/api/orders', async (req, res) => {
+    const orders = await db.getAll('orders');
     res.json(orders);
   });
 
-  app.post('/api/orders', (req, res) => {
+  app.post('/api/orders', async (req, res) => {
     const newOrder = req.body;
-    db.prepare('INSERT INTO orders (id, data) VALUES (?, ?)').run(newOrder.id, JSON.stringify(newOrder));
+    await db.insert('orders', newOrder.id, newOrder);
     
     broadcast({ type: 'NEW_ORDER', payload: newOrder });
     res.status(201).json(newOrder);
   });
 
-  app.patch('/api/orders/:id', (req, res) => {
+  app.patch('/api/orders/:id', async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
     
-    const row = db.prepare('SELECT data FROM orders WHERE id = ?').get(id) as { data: string };
-    if (row) {
-      const order = JSON.parse(row.data);
+    const order = await db.getById<any>('orders', id);
+    if (order) {
       const updatedOrder = { ...order, ...updates };
-      db.prepare('UPDATE orders SET data = ? WHERE id = ?').run(JSON.stringify(updatedOrder), id);
+      await db.update('orders', id, updatedOrder);
       
       broadcast({ type: 'UPDATE_ORDER', payload: updatedOrder });
       
@@ -420,46 +382,77 @@ async function startServer() {
     }
   });
 
-  // API Routes - Settings
-  app.get('/api/settings', (req, res) => {
-    const isDeliveryEnabled = db.prepare('SELECT value FROM system WHERE key = ?').get('isDeliveryEnabled') as { value: string };
-    res.json({ isDeliveryEnabled: isDeliveryEnabled?.value === 'true' });
+  app.post('/api/orders/:id/notify', async (req, res) => {
+    const { id } = req.params;
+    const { message, subject } = req.body;
+
+    try {
+      const order = await db.getById<any>('orders', id);
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      if (!order.customerEmail) {
+        return res.status(400).json({ error: 'Customer has no email address' });
+      }
+
+      if (transporter) {
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM || '"Living Water Wellness" <noreply@example.com>',
+          to: order.customerEmail,
+          subject: subject || 'Your Order is Ready!',
+          text: message,
+          html: `<p>${message.replace(/\n/g, '<br>')}</p>`,
+        });
+        res.json({ success: true });
+      } else {
+        res.status(500).json({ error: 'Email service not configured' });
+      }
+    } catch (error) {
+      console.error('Failed to send notification:', error);
+      res.status(500).json({ error: 'Failed to send notification' });
+    }
   });
 
-  app.post('/api/settings/delivery', (req, res) => {
+  // API Routes - Settings
+  app.get('/api/settings', async (req, res) => {
+    const isDeliveryEnabledStr = await db.getSystemValue('isDeliveryEnabled');
+    res.json({ isDeliveryEnabled: isDeliveryEnabledStr === 'true' });
+  });
+
+  app.post('/api/settings/delivery', async (req, res) => {
     const { enabled } = req.body;
-    db.prepare('UPDATE system SET value = ? WHERE key = ?').run(String(enabled), 'isDeliveryEnabled');
+    await db.setSystemValue('isDeliveryEnabled', String(enabled));
     
     broadcast({ type: 'UPDATE_SETTINGS', payload: { isDeliveryEnabled: enabled } });
     res.json({ isDeliveryEnabled: enabled });
   });
 
   // API Routes - Volunteers
-  app.get('/api/volunteers', (req, res) => {
-    const volunteers = db.prepare('SELECT data FROM volunteers').all().map((row: any) => JSON.parse(row.data));
+  app.get('/api/volunteers', async (req, res) => {
+    const volunteers = await db.getAll('volunteers');
     res.json(volunteers);
   });
 
-  app.post('/api/volunteers', (req, res) => {
+  app.post('/api/volunteers', async (req, res) => {
     const newVolunteer = req.body;
-    db.prepare('INSERT INTO volunteers (id, data) VALUES (?, ?)').run(newVolunteer.id, JSON.stringify(newVolunteer));
+    await db.insert('volunteers', newVolunteer.id, newVolunteer);
     
-    const volunteers = db.prepare('SELECT data FROM volunteers').all().map((row: any) => JSON.parse(row.data));
+    const volunteers = await db.getAll('volunteers');
     broadcast({ type: 'UPDATE_VOLUNTEERS', payload: volunteers });
     res.status(201).json(newVolunteer);
   });
 
-  app.patch('/api/volunteers/:id', (req, res) => {
+  app.patch('/api/volunteers/:id', async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
     
-    const row = db.prepare('SELECT data FROM volunteers WHERE id = ?').get(id) as { data: string };
-    if (row) {
-      const volunteer = JSON.parse(row.data);
+    const volunteer = await db.getById<any>('volunteers', id);
+    if (volunteer) {
       const updatedVolunteer = { ...volunteer, ...updates };
-      db.prepare('UPDATE volunteers SET data = ? WHERE id = ?').run(JSON.stringify(updatedVolunteer), id);
+      await db.update('volunteers', id, updatedVolunteer);
       
-      const volunteers = db.prepare('SELECT data FROM volunteers').all().map((row: any) => JSON.parse(row.data));
+      const volunteers = await db.getAll('volunteers');
       broadcast({ type: 'UPDATE_VOLUNTEERS', payload: volunteers });
       res.json(updatedVolunteer);
     } else {
@@ -467,41 +460,40 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/volunteers/:id', (req, res) => {
+  app.delete('/api/volunteers/:id', async (req, res) => {
     const { id } = req.params;
-    db.prepare('DELETE FROM volunteers WHERE id = ?').run(id);
+    await db.delete('volunteers', id);
     
-    const volunteers = db.prepare('SELECT data FROM volunteers').all().map((row: any) => JSON.parse(row.data));
+    const volunteers = await db.getAll('volunteers');
     broadcast({ type: 'UPDATE_VOLUNTEERS', payload: volunteers });
     res.status(204).send();
   });
 
   // API Routes - Availability
-  app.get('/api/availability', (req, res) => {
-    const availability = db.prepare('SELECT data FROM availability').all().map((row: any) => JSON.parse(row.data));
+  app.get('/api/availability', async (req, res) => {
+    const availability = await db.getAll('availability');
     res.json(availability);
   });
 
-  app.post('/api/availability', (req, res) => {
+  app.post('/api/availability', async (req, res) => {
     const newAvailability = req.body;
-    db.prepare('INSERT INTO availability (id, data) VALUES (?, ?)').run(newAvailability.id, JSON.stringify(newAvailability));
+    await db.insert('availability', newAvailability.id, newAvailability);
     
-    const availability = db.prepare('SELECT data FROM availability').all().map((row: any) => JSON.parse(row.data));
+    const availability = await db.getAll('availability');
     broadcast({ type: 'UPDATE_AVAILABILITY', payload: availability });
     res.status(201).json(newAvailability);
   });
 
-  app.patch('/api/availability/:id', (req, res) => {
+  app.patch('/api/availability/:id', async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
     
-    const row = db.prepare('SELECT data FROM availability WHERE id = ?').get(id) as { data: string };
-    if (row) {
-      const avail = JSON.parse(row.data);
+    const avail = await db.getById<any>('availability', id);
+    if (avail) {
       const updatedAvail = { ...avail, ...updates };
-      db.prepare('UPDATE availability SET data = ? WHERE id = ?').run(JSON.stringify(updatedAvail), id);
+      await db.update('availability', id, updatedAvail);
       
-      const availability = db.prepare('SELECT data FROM availability').all().map((row: any) => JSON.parse(row.data));
+      const availability = await db.getAll('availability');
       broadcast({ type: 'UPDATE_AVAILABILITY', payload: availability });
       res.json(updatedAvail);
     } else {
@@ -509,11 +501,11 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/availability/:id', (req, res) => {
+  app.delete('/api/availability/:id', async (req, res) => {
     const { id } = req.params;
-    db.prepare('DELETE FROM availability WHERE id = ?').run(id);
+    await db.delete('availability', id);
     
-    const availability = db.prepare('SELECT data FROM availability').all().map((row: any) => JSON.parse(row.data));
+    const availability = await db.getAll('availability');
     broadcast({ type: 'UPDATE_AVAILABILITY', payload: availability });
     res.status(204).send();
   });
@@ -535,4 +527,3 @@ async function startServer() {
 }
 
 startServer();
-

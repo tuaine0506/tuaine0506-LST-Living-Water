@@ -113,6 +113,17 @@ const HomePage: React.FC = () => {
           </div>
           <OrderForm />
       </div>
+
+      {/* Footer */}
+      <footer className="text-center text-brand-brown/60 text-sm py-8 space-y-2">
+        <p>© {new Date().getFullYear()} Living Water Wellness. All rights reserved.</p>
+        <p>
+          Questions? Contact us at <a href="mailto:teisi.uaine@gmail.com" className="text-brand-green font-bold hover:underline">teisi.uaine@gmail.com</a>
+        </p>
+        <p className="text-xs max-w-md mx-auto pt-4 border-t border-brand-brown/10 mt-4">
+          Proceeds support the La Sierra Tongan SDA Fellowship youth ministry. Thank you for your support!
+        </p>
+      </footer>
     </div>
   );
 };

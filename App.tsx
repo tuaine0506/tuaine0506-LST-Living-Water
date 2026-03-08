@@ -9,7 +9,9 @@ import AdminTutorialPage from './pages/AdminTutorialPage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import IngredientsPage from './pages/IngredientsPage';
 import OrderHistoryPage from './pages/OrderHistoryPage';
-import { ShoppingCart, ClipboardList, BarChart3, CalendarDays, Lock, Unlock, Droplets, X, BookOpen, HelpCircle, PlayCircle, Truck, Leaf, History } from 'lucide-react';
+import ProfilePage from './pages/ProfilePage';
+import BrandAssetsPage from './pages/BrandAssetsPage';
+import { ShoppingCart, ClipboardList, BarChart3, CalendarDays, Lock, Unlock, Droplets, X, BookOpen, HelpCircle, PlayCircle, Truck, Leaf, History, User, Palette } from 'lucide-react';
 import { useApp } from './context/AppContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -119,8 +121,10 @@ const AppContent: React.FC = () => {
           <Route path="/schedule" element={<ProtectedRoute><SchedulePage /></ProtectedRoute>} />
           <Route path="/recipes" element={<ProtectedRoute><RecipesPage /></ProtectedRoute>} />
           <Route path="/ingredients" element={<ProtectedRoute><IngredientsPage /></ProtectedRoute>} />
+          <Route path="/brand-assets" element={<ProtectedRoute><BrandAssetsPage /></ProtectedRoute>} />
           <Route path="/admin-tutorial" element={<ProtectedRoute><AdminTutorialPage /></ProtectedRoute>} />
           <Route path="/order-history" element={<OrderHistoryPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
         </Routes>
       </main>
 
@@ -144,9 +148,9 @@ const AppContent: React.FC = () => {
                 <HelpCircle className="h-5 w-5 md:h-6 md:w-6" />
                 <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">How to</span>
               </button>
-              <NavLink to="/order-history" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
-                <History className="h-5 w-5 md:h-6 md:w-6" />
-                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">History</span>
+              <NavLink to="/profile" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                <User className="h-5 w-5 md:h-6 md:w-6" />
+                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Profile</span>
               </NavLink>
             </>
           )}
@@ -180,6 +184,10 @@ const AppContent: React.FC = () => {
               <NavLink to="/ingredients" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
                 <Leaf className="h-5 w-5 md:h-6 md:w-6" />
                 <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Stock</span>
+              </NavLink>
+              <NavLink to="/brand-assets" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                <Palette className="h-5 w-5 md:h-6 md:w-6" />
+                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Assets</span>
               </NavLink>
               <NavLink to="/admin-tutorial" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
                 <PlayCircle className="h-5 w-5 md:h-6 md:w-6" />
@@ -230,6 +238,7 @@ const AppContent: React.FC = () => {
                 >
                   Login to Dashboard
                 </button>
+                
                 <button 
                   type="button"
                   onClick={() => setShowLoginModal(false)}

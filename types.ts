@@ -57,7 +57,6 @@ export interface Order {
   orderNumber: string;
   zelleConfirmationNumber: string;
   isRecurring: boolean;
-  associatedMember?: string;
   recurringWeeksFulfilled?: number;
   recurringDates?: string[];
 }

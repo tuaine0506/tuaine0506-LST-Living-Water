@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Utensils, BookOpen, Droplets, Info, ExternalLink, Scissors, Play, Eye, EyeOff, AlertTriangle, RefreshCw, Plus, Trash2, X as CloseIcon } from 'lucide-react';
+import { Product } from '../types';
+import { Utensils, BookOpen, Droplets, Info, ExternalLink, Scissors, Play, Eye, EyeOff, AlertTriangle, RefreshCw, Plus, Trash2, X as CloseIcon, Edit2, CheckCircle } from 'lucide-react';
 import LazyVideoPlayer from '../components/LazyVideoPlayer';
 
 const RecipesPage: React.FC = () => {
@@ -11,8 +12,10 @@ const RecipesPage: React.FC = () => {
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [isUpdatingIngredient, setIsUpdatingIngredient] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingProductData, setEditingProductData] = useState<Product | null>(null);
   
-  // New Product Form State
+  // New/Edit Product Form State
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newImageColor, setNewImageColor] = useState('#F27D26');
@@ -21,6 +24,7 @@ const RecipesPage: React.FC = () => {
   const [newVideoStart, setNewVideoStart] = useState(0);
   const [newVideoEnd, setNewVideoEnd] = useState(0);
   const [isAdding, setIsAdding] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleToggleClick = (productId: string) => {
     setConfirmingProduct(productId);
@@ -55,6 +59,41 @@ const RecipesPage: React.FC = () => {
       await toggleIngredientAvailability(name);
     } finally {
       setIsUpdatingIngredient(null);
+    }
+  };
+
+  const handleEditClick = (product: Product) => {
+    setEditingProductData(product);
+    setNewName(product.name);
+    setNewDescription(product.description);
+    setNewImageColor(product.imageColor);
+    setNewSelectedIngredients(product.ingredients);
+    setNewYoutubeId(product.youtubeId || '');
+    setNewVideoStart(product.videoStart || 0);
+    setNewVideoEnd(product.videoEnd || 0);
+    setShowEditModal(true);
+  };
+
+  const handleUpdateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProductData || !newName.trim()) return;
+    
+    setIsSaving(true);
+    try {
+      await updateProduct(editingProductData.id, {
+        name: newName.trim(),
+        description: newDescription.trim(),
+        imageColor: newImageColor,
+        ingredients: newSelectedIngredients,
+        youtubeId: newYoutubeId.trim() || undefined,
+        videoStart: newVideoStart,
+        videoEnd: newVideoEnd,
+      });
+      setShowEditModal(false);
+      setEditingProductData(null);
+      resetForm();
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -203,6 +242,14 @@ const RecipesPage: React.FC = () => {
                   </button>
 
                   <button
+                    onClick={() => handleEditClick(product)}
+                    className="p-2 text-white/60 hover:text-brand-orange transition-colors"
+                    title="Edit Shot"
+                  >
+                    <Edit2 size={18} />
+                  </button>
+
+                  <button
                     onClick={() => handleDeleteClick(product.id)}
                     className="p-2 text-white/60 hover:text-red-400 transition-colors"
                     title="Delete Shot"
@@ -228,6 +275,7 @@ const RecipesPage: React.FC = () => {
 
                   <LazyVideoPlayer 
                     src={videoSrc} 
+                    youtubeId={product.youtubeId}
                     startTime={startTime} 
                     endTime={endTime} 
                     imageColor={product.imageColor} 
@@ -286,21 +334,6 @@ const RecipesPage: React.FC = () => {
                       {product.description}
                   </p>
                 </div>
-              </div>
-
-              <div className="px-6 py-4 bg-brand-cream/10 border-t border-brand-light-green/10 flex justify-between items-center">
-                  <a 
-                    href="https://feelinfabulouswithkayla.com/2022/11/06/immune-boosting-wellness-shots/" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-[10px] text-brand-green font-bold hover:text-brand-orange transition-colors flex items-center gap-1.5 uppercase tracking-wide"
-                  >
-                    Source Documentation <ExternalLink size={12} />
-                  </a>
-                  <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
-                    <p className="text-[10px] text-brand-brown/50 uppercase font-extrabold tracking-tighter">Living Water QA Verified</p>
-                  </div>
               </div>
             </div>
           );
@@ -424,6 +457,128 @@ const RecipesPage: React.FC = () => {
                 >
                   {isAdding ? <RefreshCw size={20} className="animate-spin" /> : <Plus size={20} />}
                   Create Shot
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Product Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl my-8 overflow-hidden border border-brand-light-green animate-in zoom-in duration-200">
+            <div className="bg-brand-orange p-6 text-white flex justify-between items-center">
+              <h3 className="text-2xl font-bold font-serif">Edit Shot Recipe</h3>
+              <button onClick={() => setShowEditModal(false)} className="hover:text-brand-green transition-colors">
+                <CloseIcon size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleUpdateProduct} className="p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-brand-brown uppercase tracking-widest">Shot Name</label>
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange outline-none"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-brand-brown uppercase tracking-widest">Theme Color (Hex)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="color"
+                      value={newImageColor}
+                      onChange={(e) => setNewImageColor(e.target.value)}
+                      className="h-12 w-12 p-1 border border-gray-200 rounded-xl cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={newImageColor}
+                      onChange={(e) => setNewImageColor(e.target.value)}
+                      className="flex-grow p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange outline-none font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-brand-brown uppercase tracking-widest">Description / Benefits</label>
+                <textarea
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  rows={3}
+                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange outline-none resize-none"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-brand-brown uppercase tracking-widest">Select Ingredients</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto p-2 border border-gray-100 rounded-xl bg-gray-50">
+                  {allIngredients.map(ing => (
+                    <button
+                      key={ing.name}
+                      type="button"
+                      onClick={() => toggleIngredientSelection(ing.name)}
+                      className={`p-2 text-xs font-bold rounded-lg border transition-all ${newSelectedIngredients.includes(ing.name) ? 'bg-brand-green text-white border-brand-green' : 'bg-white text-gray-600 border-gray-200 hover:border-brand-orange'}`}
+                    >
+                      {ing.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-brand-brown uppercase tracking-widest">YouTube ID</label>
+                  <input
+                    type="text"
+                    value={newYoutubeId}
+                    onChange={(e) => setNewYoutubeId(e.target.value)}
+                    placeholder="e.g., dQw4w9WgXcQ"
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-brand-brown uppercase tracking-widest">Video Start (sec)</label>
+                  <input
+                    type="number"
+                    value={newVideoStart}
+                    onChange={(e) => setNewVideoStart(parseInt(e.target.value) || 0)}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-brand-brown uppercase tracking-widest">Video End (sec)</label>
+                  <input
+                    type="number"
+                    value={newVideoEnd}
+                    onChange={(e) => setNewVideoEnd(parseInt(e.target.value) || 0)}
+                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-grow py-4 px-6 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving || !newName.trim() || newSelectedIngredients.length === 0}
+                  className="flex-grow-[2] py-4 px-6 bg-brand-green text-white font-bold rounded-2xl hover:bg-opacity-90 transition-all shadow-lg shadow-brand-green/20 disabled:bg-gray-300 flex items-center justify-center gap-2"
+                >
+                  {isSaving ? <RefreshCw size={20} className="animate-spin" /> : <CheckCircle size={20} />}
+                  Save Changes
                 </button>
               </div>
             </form>

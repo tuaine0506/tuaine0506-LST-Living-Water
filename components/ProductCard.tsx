@@ -14,6 +14,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const [added, setAdded] = useState<boolean>(false);
   const [selectedOptionals, setSelectedOptionals] = useState<string[]>([]);
   const [showTooltip, setShowTooltip] = useState<boolean>(false);
+  const [newIngredient, setNewIngredient] = useState('');
+  const [isOptional, setIsOptional] = useState(false);
+  const [isAddingIngredient, setIsAddingIngredient] = useState(false);
   const { addToCart, ingredients: allIngredients, isAdmin, updateProduct } = useApp();
 
   const handleAddToCart = () => {
@@ -34,6 +37,25 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
     if (!isAdmin) return;
     const updatedIngredients = product.ingredients.filter(ing => ing !== ingredientToDelete);
     updateProduct(product.id, { ingredients: updatedIngredients });
+  };
+
+  const handleAddIngredient = () => {
+    if (!newIngredient.trim()) return;
+    const ingredientName = isOptional ? `${newIngredient.trim()} (optional)` : newIngredient.trim();
+    
+    // Avoid duplicates
+    if (product.ingredients.includes(ingredientName)) {
+      setIsAddingIngredient(false);
+      setNewIngredient('');
+      setIsOptional(false);
+      return;
+    }
+
+    const updatedIngredients = [...product.ingredients, ingredientName];
+    updateProduct(product.id, { ingredients: updatedIngredients });
+    setNewIngredient('');
+    setIsOptional(false);
+    setIsAddingIngredient(false);
   };
 
   const getPlaceholderImage = (color: string, name: string) => {
@@ -149,6 +171,69 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
                 </div>
               );
             })}
+            
+            {isAdmin && (
+              <div className="w-full mt-2">
+                {isAddingIngredient ? (
+                  <div className="space-y-2 bg-brand-orange/5 p-2 rounded-xl border border-brand-orange/20">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={newIngredient}
+                        onChange={(e) => setNewIngredient(e.target.value)}
+                        className="text-[10px] p-1.5 border border-brand-orange/30 rounded-md focus:ring-1 focus:ring-brand-orange outline-none w-full bg-white font-bold text-brand-brown"
+                        autoFocus
+                      >
+                        <option value="">Select Ingredient...</option>
+                        {allIngredients
+                          .filter(ing => ing.available)
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map((ing, i) => (
+                            <option key={i} value={ing.name}>{ing.name}</option>
+                          ))
+                        }
+                      </select>
+                      <button 
+                        onClick={handleAddIngredient}
+                        disabled={!newIngredient}
+                        className={`p-1.5 rounded-md transition-colors ${!newIngredient ? 'bg-gray-300 cursor-not-allowed' : 'bg-brand-green text-white hover:bg-brand-green/90'}`}
+                        title="Add"
+                      >
+                        <PlusCircle size={14} />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setIsAddingIngredient(false);
+                          setNewIngredient('');
+                          setIsOptional(false);
+                        }}
+                        className="text-gray-400 p-1.5 hover:text-red-500 transition-colors"
+                        title="Cancel"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 px-1">
+                      <label className="flex items-center gap-1.5 cursor-pointer group">
+                        <div 
+                          onClick={() => setIsOptional(!isOptional)}
+                          className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isOptional ? 'bg-brand-orange border-brand-orange text-white' : 'bg-white border-gray-300'}`}
+                        >
+                          {isOptional && <CheckCircle size={10} />}
+                        </div>
+                        <span className="text-[10px] font-bold text-brand-brown select-none">Mark as Optional</span>
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setIsAddingIngredient(true)}
+                    className="flex items-center gap-1 text-[10px] font-bold text-brand-orange hover:text-brand-orange/80 transition-colors bg-brand-orange/5 px-2 py-1 rounded-full border border-brand-orange/20"
+                  >
+                    <PlusCircle size={10} /> Add Ingredient
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

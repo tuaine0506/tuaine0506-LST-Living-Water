@@ -3,12 +3,14 @@ import { useApp } from '../context/AppContext';
 import { Order, OrderSize } from '../types';
 import { Check, Package, X, Utensils, Truck, RefreshCw, Heart, Edit2, ShoppingBag, ListChecks, Mail, CheckCircle2, AlertTriangle } from 'lucide-react';
 import NotificationModal from '../components/NotificationModal';
+import ConfirmationModal from '../components/ConfirmationModal';
 import EditOrderModal from '../components/EditOrderModal';
 
 const FulfillmentPage: React.FC = () => {
-  const { orders, products, toggleOrderFulfilled, updateOrder, ingredients: allIngredients } = useApp();
+  const { orders, products, toggleOrderFulfilled, updateOrder, ingredients: allIngredients, toggleIngredientAvailability } = useApp();
   const [notificationOrder, setNotificationOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null);
 
   const isIngredientAvailable = (name: string) => {
     const cleanName = name.replace(/\s*\(optional\)\s*/i, '').trim();
@@ -66,9 +68,19 @@ const FulfillmentPage: React.FC = () => {
   }, [orders, products]);
 
   const handleFulfillClick = (order: Order) => {
-    toggleOrderFulfilled(order.id);
-    if (!order.isFulfilled) {
-        setNotificationOrder(order);
+    if (order.isFulfilled) {
+        // If unfulfilling, just do it (or we could add confirmation here too, but user asked for "before fulfilling")
+        toggleOrderFulfilled(order.id);
+    } else {
+        setConfirmingOrder(order);
+    }
+  };
+
+  const handleConfirmFulfill = () => {
+    if (confirmingOrder) {
+        toggleOrderFulfilled(confirmingOrder.id);
+        setNotificationOrder(confirmingOrder);
+        setConfirmingOrder(null);
     }
   };
 
@@ -91,8 +103,12 @@ const FulfillmentPage: React.FC = () => {
         isFulfilled: newWeeks >= 4 
     });
 
-    if (newWeeks >= 4) {
-        setNotificationOrder(order);
+    if (newWeeks > currentWeeks) {
+        setNotificationOrder({
+            ...order,
+            recurringWeeksFulfilled: newWeeks,
+            isFulfilled: newWeeks >= 4
+        });
     }
   };
 
@@ -141,8 +157,10 @@ const FulfillmentPage: React.FC = () => {
                     {order.deliveryOption}
                 </div>
                  {order.isRecurring && (
-                    <div className="inline-flex items-center gap-1 text-sm font-semibold px-2 py-1 rounded-full bg-teal-100 text-teal-800">
-                        <RefreshCw size={14} /> Recurring
+                    <div className="flex flex-col gap-1">
+                      <div className="inline-flex items-center gap-1 text-sm font-semibold px-2 py-1 rounded-full bg-teal-100 text-teal-800">
+                          <RefreshCw size={14} /> Recurring
+                      </div>
                     </div>
                  )}
             </div>
@@ -189,54 +207,87 @@ const FulfillmentPage: React.FC = () => {
       </div>
       
       {order.isRecurring ? (
-        <div className="mt-4 bg-teal-50 p-3 rounded-lg border border-teal-100">
-            <p className="text-xs font-bold text-teal-800 mb-2 flex items-center gap-1">
-                <RefreshCw size={12} /> Recurring Progress
-            </p>
-            <div className="flex justify-between gap-1">
-                {[0, 1, 2, 3].map((weekIdx) => {
-                    const isCompleted = (order.recurringWeeksFulfilled || 0) > weekIdx;
-                    const isNext = (order.recurringWeeksFulfilled || 0) === weekIdx;
-                    const date = order.recurringDates?.[weekIdx];
-                    const formattedDate = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }) : '';
+        <div className="mt-4 space-y-2">
+            <div className="bg-teal-50 p-3 rounded-xl border border-teal-100 shadow-sm">
+                <div className="flex justify-between items-center mb-3">
+                    <p className="text-xs font-bold text-teal-800 flex items-center gap-1.5">
+                        <RefreshCw size={14} className="animate-spin-slow" /> 
+                        Recurring Subscription
+                    </p>
+                    <span className="text-[10px] font-bold bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full border border-teal-200">
+                        {order.recurringWeeksFulfilled || 0} / 4 Weeks
+                    </span>
+                </div>
+                
+                <div className="grid grid-cols-4 gap-1.5">
+                    {[0, 1, 2, 3].map((weekIdx) => {
+                        const isCompleted = (order.recurringWeeksFulfilled || 0) > weekIdx;
+                        const isNext = (order.recurringWeeksFulfilled || 0) === weekIdx;
+                        const date = order.recurringDates?.[weekIdx];
+                        const formattedDate = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
 
-                    return (
-                        <button
-                            key={weekIdx}
-                            onClick={() => !isFulfilledView && handleRecurringWeekToggle(order, weekIdx)}
-                            disabled={isFulfilledView || (!isCompleted && !isNext)}
-                            className={`flex-1 py-1.5 rounded text-[10px] font-bold border transition-colors flex flex-col items-center gap-0.5 ${
-                                isCompleted 
-                                    ? 'bg-teal-500 text-white border-teal-600' 
-                                    : isNext && !isFulfilledView
-                                        ? 'bg-white text-teal-600 border-teal-300 hover:bg-teal-50'
-                                        : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                            }`}
-                        >
-                            <span>Wk {weekIdx + 1}</span>
-                            {formattedDate && <span className="text-[8px] opacity-80">{formattedDate}</span>}
-                        </button>
-                    );
-                })}
+                        return (
+                            <button
+                                key={weekIdx}
+                                onClick={() => !isFulfilledView && handleRecurringWeekToggle(order, weekIdx)}
+                                disabled={isFulfilledView || (!isCompleted && !isNext)}
+                                className={`relative py-2 rounded-lg text-[10px] font-bold border transition-all flex flex-col items-center justify-center gap-1 ${
+                                    isCompleted 
+                                        ? 'bg-teal-500 text-white border-teal-600 shadow-inner' 
+                                        : isNext && !isFulfilledView
+                                            ? 'bg-white text-teal-600 border-teal-300 hover:border-teal-400 hover:bg-teal-50 shadow-sm'
+                                            : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                }`}
+                            >
+                                {isCompleted && (
+                                    <div className="absolute -top-1 -right-1 bg-white text-teal-500 rounded-full shadow-sm">
+                                        <CheckCircle2 size={10} />
+                                    </div>
+                                )}
+                                <span className="uppercase tracking-tighter text-[8px] opacity-70">Week {weekIdx + 1}</span>
+                                <span className="font-mono">{formattedDate || '---'}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+                
+                {isFulfilledView && (
+                     <button
+                        onClick={() => handleFulfillClick(order)}
+                        className="w-full mt-3 py-2 px-4 rounded-lg font-bold text-xs text-teal-800 bg-white hover:bg-teal-50 border border-teal-200 flex items-center justify-center transition-colors shadow-sm"
+                    >
+                        <RefreshCw className="mr-2 h-3.5 w-3.5" /> Reset to Active
+                    </button>
+                )}
             </div>
-            {isFulfilledView && (
-                 <button
-                    onClick={() => handleFulfillClick(order)}
-                    className="w-full mt-2 py-1.5 px-4 rounded font-semibold text-xs text-yellow-700 bg-yellow-100 hover:bg-yellow-200 border border-yellow-200 flex items-center justify-center transition-colors"
+            {!isFulfilledView && (
+                <button
+                    onClick={() => setEditingOrder(order)}
+                    className="w-full py-2 px-4 rounded-lg font-semibold text-brand-green bg-brand-cream/30 hover:bg-brand-cream/50 border border-brand-green/20 flex items-center justify-center transition-colors text-sm"
                 >
-                    <X className="mr-1 h-3 w-3" /> Mark Unfulfilled
+                    <Edit2 className="mr-2 h-4 w-4" /> Edit Order Details
                 </button>
             )}
         </div>
       ) : (
-        <button
-            onClick={() => handleFulfillClick(order)}
-            className={`w-full mt-4 py-2 px-4 rounded-lg font-semibold text-white flex items-center justify-center transition-colors ${
-            isFulfilledView ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
-            }`}
-        >
-            {isFulfilledView ? <><X className="mr-2 h-4 w-4" />Mark as Unfulfilled</> : <><Check className="mr-2 h-4 w-4" />Mark as Fulfilled</>}
-        </button>
+        <div className="mt-4 space-y-2">
+            {!isFulfilledView && (
+                <button
+                    onClick={() => setEditingOrder(order)}
+                    className="w-full py-2 px-4 rounded-lg font-semibold text-brand-green bg-brand-cream/30 hover:bg-brand-cream/50 border border-brand-green/20 flex items-center justify-center transition-colors text-sm"
+                >
+                    <Edit2 className="mr-2 h-4 w-4" /> Edit Order Details
+                </button>
+            )}
+            <button
+                onClick={() => handleFulfillClick(order)}
+                className={`w-full py-2 px-4 rounded-lg font-semibold text-white flex items-center justify-center transition-colors ${
+                isFulfilledView ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
+                }`}
+            >
+                {isFulfilledView ? <><X className="mr-2 h-4 w-4" />Mark as Unfulfilled</> : <><Check className="mr-2 h-4 w-4" />Mark as Fulfilled</>}
+            </button>
+        </div>
       )}
     </div>
   );
@@ -264,9 +315,15 @@ const FulfillmentPage: React.FC = () => {
             {shoppingListData.map(([ingredient, data]) => {
               const available = isIngredientAvailable(ingredient);
               return (
-                <div key={ingredient} className={`flex items-start gap-3 p-3 rounded-xl border transition-all group ${available ? 'bg-gray-50 border-gray-100 hover:border-brand-orange/30' : 'bg-red-50 border-red-200 shadow-sm'}`}>
+                <div 
+                  key={ingredient} 
+                  onClick={() => toggleIngredientAvailability(ingredient)}
+                  className={`flex items-start gap-3 p-3 rounded-xl border transition-all group cursor-pointer ${available ? 'bg-gray-50 border-gray-100 hover:border-brand-orange/30' : 'bg-red-50 border-red-200 shadow-sm'}`}
+                >
                   <div className="mt-1">
-                    <div className={`w-5 h-5 rounded border-2 transition-colors ${available ? 'border-brand-light-green group-hover:border-brand-orange' : 'border-red-500 bg-red-100'}`} />
+                    <div className={`w-5 h-5 rounded border-2 transition-colors ${available ? 'border-brand-light-green group-hover:border-brand-orange' : 'border-red-500 bg-red-100'}`}>
+                      {!available && <Check size={16} className="text-red-500" />}
+                    </div>
                   </div>
                   <div className="flex-grow">
                     <div className="flex justify-between items-start">
@@ -348,6 +405,14 @@ const FulfillmentPage: React.FC = () => {
       <EditOrderModal
         order={editingOrder}
         onClose={() => setEditingOrder(null)}
+      />
+
+      <ConfirmationModal
+        isOpen={!!confirmingOrder}
+        title="Confirm Fulfillment"
+        message={`Are you sure you want to mark the order for ${confirmingOrder?.customerName} as fulfilled? This will move it to the Fulfilled Orders section.`}
+        onConfirm={handleConfirmFulfill}
+        onCancel={() => setConfirmingOrder(null)}
       />
     </div>
   );

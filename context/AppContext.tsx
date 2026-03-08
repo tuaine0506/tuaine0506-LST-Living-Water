@@ -27,10 +27,10 @@ interface AppContextType {
   updateCartQuantity: (productId: string, size: OrderSize, optionalIngredients: string[], quantity: number) => void;
   setDonationAmount: (amount: number) => void;
   clearCart: () => void;
-  placeOrder: (customerName: string, customerContact: string, customerEmail: string, deliveryOption: DeliveryOption, deliveryAddress: string | undefined, zelleConfirmationNumber: string, isRecurring: boolean, recurringDates?: string[], associatedMember?: string) => void;
+  placeOrder: (customerName: string, customerContact: string, customerEmail: string, deliveryOption: DeliveryOption, deliveryAddress: string | undefined, zelleConfirmationNumber: string, isRecurring: boolean, recurringDates?: string[]) => void;
   updateOrder: (orderId: string, updatedData: Partial<Order>) => void;
   toggleOrderFulfilled: (orderId: string) => void;
-  login: (password: string) => Promise<boolean>;
+  login: (password?: string) => Promise<boolean>;
   logout: () => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   toggleProductAvailability: (productId: string) => void;
@@ -49,6 +49,7 @@ interface AppContextType {
   addAvailability: (avail: Omit<VolunteerAvailability, 'id'>) => Promise<void>;
   updateAvailability: (id: string, updates: Partial<VolunteerAvailability>) => Promise<void>;
   deleteAvailability: (id: string) => Promise<void>;
+  addNotification: (message: string, type: 'info' | 'success' | 'warning') => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -86,6 +87,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [donationAmount, setDonationAmount] = useLocalStorage<number>('donationAmount', 0);
   const [schedule, setSchedule] = useState<ScheduleEvent[]>([]);
   const [isAdmin, setIsAdmin] = useLocalStorage<boolean>('isAdmin', false);
+  const [adminToken, setAdminToken] = useLocalStorage<string | null>('adminToken', null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
@@ -161,6 +163,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       .then(res => res.json())
       .then(data => setIsDeliveryEnabled(data.isDeliveryEnabled))
       .catch(err => console.error('Failed to fetch settings:', err));
+
+    // Verify admin session if token exists
+    const token = window.localStorage.getItem('adminToken');
+    if (token) {
+      const parsedToken = JSON.parse(token);
+      if (parsedToken) {
+        fetch('/api/admin/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: parsedToken }),
+        })
+        .then(res => {
+          if (!res.ok) {
+            setIsAdmin(false);
+            setAdminToken(null);
+          } else {
+            setIsAdmin(true);
+          }
+        })
+        .catch(() => {
+          // If network error, we keep the local state but maybe we should be more careful
+        });
+      }
+    }
 
     // WebSocket connection
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -239,14 +265,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     generateSchedule();
   }, []);
 
-  const login = async (password: string): Promise<boolean> => {
+  const login = async (password?: string): Promise<boolean> => {
     try {
+      if (!password) {
+        return false;
+      }
+
       const response = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
       if (response.ok) {
+        const data = await response.json();
+        if (data.token) {
+          setAdminToken(data.token);
+        }
         setIsAdmin(true);
         return true;
       }
@@ -256,8 +290,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return false;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      if (adminToken) {
+        await fetch('/api/admin/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: adminToken }),
+        });
+      }
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
     setIsAdmin(false);
+    setAdminToken(null);
   };
 
   const changePassword = async (currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
@@ -311,6 +357,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       console.error('Failed to update product:', err);
     }
   };
+
+  // Auto-update product descriptions from constants if they match the old default
+  useEffect(() => {
+    if (products.length === 0) return;
+    
+    const OLD_DESCRIPTIONS: Record<string, string> = {
+      'lemon-ginger': 'A classic immune booster to kickstart your day with a zesty punch.',
+      'berry-beet': 'A vibrant, earthy shot designed to enhance energy and stamina.',
+      'pineapple-mint': 'A refreshing tropical blend that aids digestion and soothes the senses.',
+      'mixed-berry': 'Packed with antioxidants to fight free radicals and support overall health.',
+      'carrot-apple': 'A sweet and spicy combination rich in vitamins and anti-inflammatory properties.',
+      'everything-green': 'A potent dose of greens to mineralize your body and boost vitality.',
+      'elderberry-zinc': 'A potent blend to strengthen immunity and fight off illness.',
+    };
+
+    PRODUCTS.forEach(constProduct => {
+      const existingProduct = products.find(p => p.id === constProduct.id);
+      // Update if it matches the old description OR if it's empty
+      if (existingProduct && (existingProduct.description === OLD_DESCRIPTIONS[constProduct.id] || !existingProduct.description)) {
+        console.log(`Updating description for ${constProduct.name}`);
+        updateProduct(existingProduct.id, { description: constProduct.description });
+      }
+    });
+  }, [products]);
 
   const toggleIngredientAvailability = async (ingredientName: string) => {
     const ingredient = ingredients.find(i => i.name === ingredientName);
@@ -476,7 +546,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setDonationAmount(0);
   };
 
-  const placeOrder = async (customerName: string, customerContact: string, customerEmail: string, deliveryOption: DeliveryOption, deliveryAddress: string | undefined, zelleConfirmationNumber: string, isRecurring: boolean, recurringDates?: string[], associatedMember?: string) => {
+  const placeOrder = async (
+    customerName: string, 
+    customerContact: string, 
+    customerEmail: string, 
+    deliveryOption: DeliveryOption, 
+    deliveryAddress: string | undefined, 
+    zelleConfirmationNumber: string, 
+    isRecurring: boolean, 
+    recurringDates?: string[]
+  ) => {
     let currentId = cartId;
     if (!currentId) {
         currentId = `LW-${Date.now().toString().slice(-6)}`;
@@ -504,7 +583,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       orderNumber: currentId,
       zelleConfirmationNumber,
       isRecurring,
-      associatedMember,
       recurringWeeksFulfilled: isRecurring ? 0 : undefined,
       recurringDates: isRecurring ? recurringDates : undefined,
     };
@@ -612,7 +690,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   return (
-    <AppContext.Provider value={{ products, orders, cart, cartId, donationAmount, setDonationAmount, schedule, isAdmin, notifications, ingredients, volunteers, availability, isDeliveryEnabled, addToCart, removeFromCart, updateCartQuantity, clearCart, placeOrder, updateOrder, toggleOrderFulfilled, login, logout, changePassword, toggleProductAvailability, updateProduct, toggleIngredientAvailability, toggleDeliveryEnabled, resetProducts, addProduct, deleteProduct, addIngredient, deleteIngredient, dismissNotification, addVolunteer, updateVolunteer, deleteVolunteer, addAvailability, updateAvailability, deleteAvailability }}>
+    <AppContext.Provider value={{ products, orders, cart, cartId, donationAmount, setDonationAmount, schedule, isAdmin, notifications, ingredients, volunteers, availability, isDeliveryEnabled, addToCart, removeFromCart, updateCartQuantity, clearCart, placeOrder, updateOrder, toggleOrderFulfilled, login, logout, changePassword, toggleProductAvailability, updateProduct, toggleIngredientAvailability, toggleDeliveryEnabled, resetProducts, addProduct, deleteProduct, addIngredient, deleteIngredient, dismissNotification, addVolunteer, updateVolunteer, deleteVolunteer, addAvailability, updateAvailability, deleteAvailability, addNotification }}>
       {children}
     </AppContext.Provider>
   );

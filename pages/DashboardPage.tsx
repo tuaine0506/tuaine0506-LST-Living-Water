@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { GROUP_NAMES } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { DollarSign, Hash, ShoppingBag, Key, Check, AlertCircle } from 'lucide-react';
+import { DollarSign, Hash, ShoppingBag, Key, Check, AlertCircle, Download, FileSpreadsheet } from 'lucide-react';
 import { GroupName } from '../types';
 
 const DashboardPage: React.FC = () => {
@@ -13,6 +13,91 @@ const DashboardPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordStatus, setPasswordStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+
+  const downloadCSV = (data: any[], filename: string) => {
+    if (!data || data.length === 0) {
+      alert('No data to export');
+      return;
+    }
+
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+      headers.join(','),
+      ...data.map(row => headers.map(header => {
+        const value = row[header];
+        // Handle strings with commas or quotes
+        if (typeof value === 'string') {
+          return `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
+      }).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const handleExportOrders = () => {
+    const exportData = orders.map(order => ({
+      'Order ID': order.id,
+      'Order Number': order.orderNumber,
+      'Date': new Date(order.orderDate).toLocaleDateString(),
+      'Customer Name': order.customerName,
+      'Email': order.customerEmail || '',
+      'Phone': order.customerContact,
+      'Total Price': order.totalPrice,
+      'Status': order.isFulfilled ? 'Fulfilled' : 'Pending',
+      'Delivery Option': order.deliveryOption,
+      'Address': order.deliveryAddress || '',
+      'Zelle Conf': order.zelleConfirmationNumber,
+      'Items': order.items.map(i => `${i.quantity}x ${i.productName}`).join('; '),
+      'Group': order.assignedGroup
+    }));
+    downloadCSV(exportData, `orders_export_${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  const handleExportProfiles = () => {
+    // Derive unique profiles from orders
+    const profilesMap = new Map();
+    orders.forEach(order => {
+      const key = order.customerEmail || order.customerContact;
+      if (!profilesMap.has(key)) {
+        profilesMap.set(key, {
+          'Name': order.customerName,
+          'Email': order.customerEmail || '',
+          'Phone': order.customerContact,
+          'Address': order.deliveryAddress || '',
+          'First Order': new Date(order.orderDate).toLocaleDateString(),
+          'Last Order': new Date(order.orderDate).toLocaleDateString(),
+          'Total Orders': 0,
+          'Total Spent': 0
+        });
+      }
+      
+      const profile = profilesMap.get(key);
+      profile['Total Orders'] += 1;
+      profile['Total Spent'] += order.totalPrice;
+      if (new Date(order.orderDate) > new Date(profile['Last Order'])) {
+        profile['Last Order'] = new Date(order.orderDate).toLocaleDateString();
+      }
+      // Update address if newer order has one
+      if (order.deliveryAddress) {
+         profile['Address'] = order.deliveryAddress;
+      }
+    });
+
+    const exportData = Array.from(profilesMap.values());
+    downloadCSV(exportData, `profiles_export_${new Date().toISOString().split('T')[0]}.csv`);
+  };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,8 +210,30 @@ const DashboardPage: React.FC = () => {
           <h2 className="text-2xl font-bold text-brand-green font-serif">Admin Settings</h2>
         </div>
         
-        <div className="max-w-md">
-          <div className="mb-8 p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-start justify-between gap-4">
+        <div className="max-w-md space-y-8">
+          {/* Data Export Section */}
+          <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+            <h3 className="font-bold text-blue-900 mb-2 flex items-center gap-2">
+              <FileSpreadsheet size={18} /> Data Export
+            </h3>
+            <p className="text-xs text-blue-700 mb-4">Export data to CSV format (compatible with Google Sheets & Excel).</p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleExportOrders}
+                className="flex-1 bg-white text-blue-700 border border-blue-200 hover:bg-blue-100 font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Download size={14} /> Export Orders
+              </button>
+              <button
+                onClick={handleExportProfiles}
+                className="flex-1 bg-white text-blue-700 border border-blue-200 hover:bg-blue-100 font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Download size={14} /> Export Profiles
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-start justify-between gap-4">
             <div>
               <h3 className="font-bold text-brand-brown">Enable Delivery Option</h3>
               <p className="text-xs text-gray-500">Allow customers to choose delivery at checkout.</p>
@@ -141,7 +248,7 @@ const DashboardPage: React.FC = () => {
             </button>
           </div>
 
-          <div className="mb-8 p-4 bg-orange-50 rounded-xl border border-orange-200">
+          <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
             <h3 className="font-bold text-orange-800">Product Defaults</h3>
             <p className="text-xs text-orange-700 mb-3">Reset all products to their default availability (Only Lemon Ginger active).</p>
             <button

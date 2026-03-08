@@ -9,14 +9,23 @@ interface NotificationModalProps {
 }
 
 const NotificationModal: React.FC<NotificationModalProps> = ({ order, onClose }) => {
-  const { updateOrder } = useApp();
+  const { updateOrder, addNotification } = useApp();
   const [deliveryWindow, setDeliveryWindow] = useState(order?.deliveryWindow || '10:00 AM - 12:00 PM');
   
+  React.useEffect(() => {
+    if (order) {
+      setDeliveryWindow(order.deliveryWindow || '10:00 AM - 12:00 PM');
+    }
+  }, [order]);
+
   if (!order) return null;
 
-  const pickupMessage = `Hello ${order.customerName},\n\nYour 'Living Water' wellness shot order is ready for pickup! You can pick it up this Sunday at the La Sierra University Church.\n\nThank you for your support!`;
+  const weekNum = order.recurringWeeksFulfilled || 0;
+  const recurringSuffix = order.isRecurring ? ` (Week ${weekNum} of 4)` : '';
+
+  const pickupMessage = `Hello ${order.customerName},\n\nYour 'Living Water' wellness shot order${recurringSuffix} is ready for pickup! You can pick it up this Sunday at the La Sierra University Church.\n\nThank you for your support!`;
   
-  const deliveryMessage = `Hello ${order.customerName},\n\nYour 'Living Water' wellness shot order is fulfilled! It will be delivered this Sunday within a 2-4 hour window (approx. ${deliveryWindow}) to:\n${order.deliveryAddress}\n\nWe will notify you when our driver is nearby. Thank you for your support!`;
+  const deliveryMessage = `Hello ${order.customerName},\n\nYour 'Living Water' wellness shot order${recurringSuffix} is fulfilled! It will be delivered this Sunday within a 2-4 hour window (approx. ${deliveryWindow}) to:\n${order.deliveryAddress}\n\nWe will notify you when our driver is nearby. Thank you for your support!`;
 
   const message = order.deliveryOption === 'Pickup' ? pickupMessage : deliveryMessage;
 
@@ -25,7 +34,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({ order, onClose })
       updateOrder(order.id, { deliveryWindow });
     }
     navigator.clipboard.writeText(message);
-    alert('Message copied to clipboard and delivery window saved!');
+    addNotification('Message copied to clipboard and delivery window saved!', 'success');
   };
 
   const getSmsLink = () => {
@@ -41,6 +50,32 @@ const NotificationModal: React.FC<NotificationModalProps> = ({ order, onClose })
       updateOrder(order.id, { deliveryWindow });
     }
     return `mailto:${order.customerEmail}?subject=${encodeURIComponent('Living Water Order Ready')}&body=${encodeURIComponent(message)}`;
+  };
+
+  const sendAutomatedEmail = async () => {
+    if (order.deliveryOption === 'Delivery') {
+      updateOrder(order.id, { deliveryWindow });
+    }
+    
+    try {
+      const response = await fetch(`/api/orders/${order.id}/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          subject: 'Your Living Water Order is Ready!'
+        }),
+      });
+      
+      if (response.ok) {
+        addNotification('Email sent successfully!', 'success');
+      } else {
+        const data = await response.json();
+        addNotification(`Failed to send email: ${data.error}`, 'warning');
+      }
+    } catch (error) {
+      addNotification('Failed to send email: Network error', 'warning');
+    }
   };
 
   return (
@@ -109,12 +144,20 @@ const NotificationModal: React.FC<NotificationModalProps> = ({ order, onClose })
                 <MessageSquare size={18} /> Send SMS
             </button>
             {order.customerEmail && (
-                 <button
-                    onClick={() => window.open(getEmailLink())}
-                    className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-opacity-90 transition-all shadow-md active:scale-95"
-                >
-                    <Mail size={18} /> Send Email
-                </button>
+                 <>
+                  <button
+                      onClick={sendAutomatedEmail}
+                      className="flex items-center justify-center gap-2 bg-purple-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-opacity-90 transition-all shadow-md active:scale-95"
+                  >
+                      <Mail size={18} /> Auto-Send Email
+                  </button>
+                  <button
+                      onClick={() => window.open(getEmailLink())}
+                      className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-opacity-90 transition-all shadow-md active:scale-95"
+                  >
+                      <ExternalLink size={18} /> Open Email App
+                  </button>
+                 </>
             )}
             <button
                 onClick={saveAndCopy}
