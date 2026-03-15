@@ -1,0 +1,147 @@
+{
+  "entities": {
+    "SystemValue": {
+      "title": "SystemValue",
+      "description": "System configuration values",
+      "type": "object",
+      "properties": {
+        "value": { "type": "string" }
+      },
+      "required": ["value"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Immunity shot product",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "imageColor": { "type": "string" },
+        "ingredients": { "type": "array", "items": { "type": "string" } },
+        "youtubeId": { "type": "string" },
+        "videoStart": { "type": "number" },
+        "videoEnd": { "type": "number" },
+        "available": { "type": "boolean" }
+      },
+      "required": ["id", "name", "description", "imageColor", "ingredients", "available"]
+    },
+    "Ingredient": {
+      "title": "Ingredient",
+      "description": "Ingredient for immunity shots",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "available": { "type": "boolean" }
+      },
+      "required": ["name", "available"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerContact": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "items": { "type": "array", "items": { "$ref": "CartItem" } },
+        "assignedGroup": { "type": "string" },
+        "orderDate": { "type": "string" },
+        "isFulfilled": { "type": "boolean" },
+        "totalPrice": { "type": "number" },
+        "donationAmount": { "type": "number" },
+        "deliveryOption": { "type": "string" },
+        "deliveryAddress": { "type": "string" },
+        "deliveryWindow": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "zelleConfirmationNumber": { "type": "string" },
+        "isRecurring": { "type": "boolean" },
+        "recurringWeeksFulfilled": { "type": "number" },
+        "recurringDates": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "customerName", "customerContact", "items", "assignedGroup", "orderDate", "isFulfilled", "totalPrice", "donationAmount", "deliveryOption", "orderNumber", "zelleConfirmationNumber", "isRecurring"]
+    },
+    "CartItem": {
+      "title": "CartItem",
+      "description": "Item in a cart",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "size": { "type": "string" },
+        "quantity": { "type": "number" },
+        "selectedOptionalIngredients": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["productId", "productName", "size", "quantity"]
+    },
+    "Volunteer": {
+      "title": "Volunteer",
+      "description": "Volunteer information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "group": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "phone", "group"]
+    },
+    "VolunteerAvailability": {
+      "title": "VolunteerAvailability",
+      "description": "Volunteer availability schedule",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "volunteerId": { "type": "string" },
+        "dayOfWeek": { "type": "number" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "isRecurring": { "type": "boolean" },
+        "specificDate": { "type": "string" }
+      },
+      "required": ["id", "volunteerId", "startTime", "endTime", "isRecurring"]
+    },
+    "VerificationCode": {
+      "title": "VerificationCode",
+      "description": "Code for email/phone verification",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "expires_at": { "type": "number" }
+      },
+      "required": ["code", "expires_at"]
+    }
+  },
+  "firestore": {
+    "/system/{key}": {
+      "schema": "SystemValue",
+      "description": "System configuration"
+    },
+    "/products/{id}": {
+      "schema": "Product",
+      "description": "Products collection"
+    },
+    "/ingredients/{name}": {
+      "schema": "Ingredient",
+      "description": "Ingredients collection"
+    },
+    "/orders/{id}": {
+      "schema": "Order",
+      "description": "Orders collection"
+    },
+    "/volunteers/{id}": {
+      "schema": "Volunteer",
+      "description": "Volunteers collection"
+    },
+    "/availability/{id}": {
+      "schema": "VolunteerAvailability",
+      "description": "Availability collection"
+    },
+    "/verification_codes/{identifier}": {
+      "schema": "VerificationCode",
+      "description": "Verification codes"
+    }
+  }
+}

@@ -5,7 +5,7 @@ import { createServer } from 'http';
 import fs from 'fs/promises';
 import path from 'path';
 import nodemailer from 'nodemailer';
-import { db } from './db';
+import { db } from './db.ts';
 
 const DATA_FILE = path.join(process.cwd(), 'data.json');
 
@@ -240,6 +240,72 @@ async function startServer() {
       res.json({ success: true });
     } else {
       res.status(401).json({ success: false, error: 'Current password incorrect' });
+    }
+  });
+
+  app.get('/api/admin/backup', async (req, res) => {
+    try {
+      const products = await db.getAll('products');
+      const orders = await db.getAll('orders');
+      const ingredients = await db.getAll('ingredients');
+      const volunteers = await db.getAll('volunteers');
+      const availability = await db.getAll('availability');
+      const isDeliveryEnabled = await db.getSystemValue('isDeliveryEnabled');
+      const adminPassword = await db.getSystemValue('adminPassword');
+
+      res.json({
+        products,
+        orders,
+        ingredients,
+        volunteers,
+        availability,
+        isDeliveryEnabled: isDeliveryEnabled === 'true',
+        adminPassword
+      });
+    } catch (error) {
+      console.error('Backup failed:', error);
+      res.status(500).json({ error: 'Backup failed' });
+    }
+  });
+
+  app.post('/api/admin/restore', async (req, res) => {
+    const data = req.body;
+    
+    try {
+      if (data.products && Array.isArray(data.products)) {
+        await db.bulkInsert('products', data.products, 'id');
+        const products = await db.getAll('products');
+        broadcast({ type: 'UPDATE_PRODUCTS', payload: products });
+      }
+      
+      if (data.orders && Array.isArray(data.orders)) {
+        await db.bulkInsert('orders', data.orders, 'id');
+        const orders = await db.getAll('orders');
+        broadcast({ type: 'INIT_ORDERS', payload: orders });
+      }
+      
+      if (data.ingredients && Array.isArray(data.ingredients)) {
+        await db.bulkInsert('ingredients', data.ingredients, 'name');
+        const ingredients = await db.getAll('ingredients');
+        broadcast({ type: 'UPDATE_INGREDIENTS', payload: ingredients });
+      }
+      
+      if (data.volunteers && Array.isArray(data.volunteers)) {
+        await db.bulkInsert('volunteers', data.volunteers, 'id');
+        const volunteers = await db.getAll('volunteers');
+        broadcast({ type: 'UPDATE_VOLUNTEERS', payload: volunteers });
+      }
+      
+      if (data.availability && Array.isArray(data.availability)) {
+        await db.bulkInsert('availability', data.availability, 'id');
+        const availability = await db.getAll('availability');
+        broadcast({ type: 'UPDATE_AVAILABILITY', payload: availability });
+      }
+
+      res.json({ success: true, message: 'Restore completed successfully' });
+    } catch (error) {
+      console.error('Restore failed:', error);
+      res.status(500).json({ success: false, error: 'Restore failed' });
     }
   });
 

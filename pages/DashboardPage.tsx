@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { GROUP_NAMES } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { DollarSign, Hash, ShoppingBag, Key, Check, AlertCircle, Download, FileSpreadsheet } from 'lucide-react';
+import { DollarSign, Hash, ShoppingBag, Key, Check, AlertCircle, Download, FileSpreadsheet, Upload } from 'lucide-react';
 import { GroupName } from '../types';
 
 const DashboardPage: React.FC = () => {
@@ -13,6 +13,7 @@ const DashboardPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordStatus, setPasswordStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const downloadCSV = (data: any[], filename: string) => {
     if (!data || data.length === 0) {
@@ -97,6 +98,61 @@ const DashboardPage: React.FC = () => {
 
     const exportData = Array.from(profilesMap.values());
     downloadCSV(exportData, `profiles_export_${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  const handleBackup = async () => {
+    try {
+      const response = await fetch('/api/admin/backup');
+      if (!response.ok) throw new Error('Backup failed');
+      
+      const data = await response.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `living_water_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Backup failed:', error);
+      alert('Failed to generate backup.');
+    }
+  };
+
+  const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        
+        if (!confirm('Are you sure you want to restore this data? This will merge/overwrite existing records.')) {
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+        }
+
+        const response = await fetch('/api/admin/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(json),
+        });
+
+        if (response.ok) {
+          alert('Data restored successfully!');
+        } else {
+          alert('Failed to restore data.');
+        }
+      } catch (error) {
+        console.error('Error parsing JSON:', error);
+        alert('Invalid JSON file.');
+      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
@@ -231,6 +287,35 @@ const DashboardPage: React.FC = () => {
                 <Download size={14} /> Export Profiles
               </button>
             </div>
+          </div>
+
+          {/* Data Import Section */}
+          <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
+            <h3 className="font-bold text-purple-900 mb-2 flex items-center gap-2">
+              <Upload size={18} /> Backup & Restore Data
+            </h3>
+            <p className="text-xs text-purple-700 mb-4">Download a full JSON backup or restore from a previous one.</p>
+            <div className="flex gap-3 mb-3">
+              <button
+                onClick={handleBackup}
+                className="flex-1 bg-white text-purple-700 border border-purple-200 hover:bg-purple-100 font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Download size={14} /> Backup Data
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1 bg-white text-purple-700 border border-purple-200 hover:bg-purple-100 font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Upload size={14} /> Restore Data
+              </button>
+            </div>
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleRestore}
+              ref={fileInputRef}
+              className="hidden"
+            />
           </div>
 
           <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-start justify-between gap-4">

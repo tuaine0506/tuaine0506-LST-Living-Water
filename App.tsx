@@ -6,6 +6,7 @@ import DashboardPage from './pages/DashboardPage';
 import SchedulePage from './pages/SchedulePage';
 import RecipesPage from './pages/RecipesPage';
 import AdminTutorialPage from './pages/AdminTutorialPage';
+import AdminOrdersPage from './pages/AdminOrdersPage';
 import DeliveriesPage from './pages/DeliveriesPage';
 import IngredientsPage from './pages/IngredientsPage';
 import OrderHistoryPage from './pages/OrderHistoryPage';
@@ -123,6 +124,7 @@ const AppContent: React.FC = () => {
           <Route path="/ingredients" element={<ProtectedRoute><IngredientsPage /></ProtectedRoute>} />
           <Route path="/brand-assets" element={<ProtectedRoute><BrandAssetsPage /></ProtectedRoute>} />
           <Route path="/admin-tutorial" element={<ProtectedRoute><AdminTutorialPage /></ProtectedRoute>} />
+          <Route path="/orders" element={<ProtectedRoute><AdminOrdersPage /></ProtectedRoute>} />
           <Route path="/order-history" element={<OrderHistoryPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Routes>
@@ -157,9 +159,9 @@ const AppContent: React.FC = () => {
 
           {isAdmin && (
             <>
-              <NavLink to="/order-history" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
-                <History className="h-5 w-5 md:h-6 md:w-6" />
-                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">History</span>
+              <NavLink to="/orders" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
+                <ClipboardList className="h-5 w-5 md:h-6 md:w-6" />
+                <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Orders</span>
               </NavLink>
               <NavLink to="/schedule" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
                 <CalendarDays className="h-5 w-5 md:h-6 md:w-6" />

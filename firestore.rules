@@ -1,0 +1,143 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: system
+    // Document ID: {key}
+    // Fields:
+    //   - value: string (required) - Configuration value
+    //
+    // Collection: products
+    // Document ID: {id}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - description: string (required)
+    //   - imageColor: string (required)
+    //   - ingredients: list (required)
+    //   - youtubeId: string (optional)
+    //   - videoStart: number (optional)
+    //   - videoEnd: number (optional)
+    //   - available: bool (required)
+    //
+    // Collection: ingredients
+    // Document ID: {name}
+    // Fields:
+    //   - name: string (required)
+    //   - available: bool (required)
+    //
+    // Collection: orders
+    // Document ID: {id}
+    // Fields:
+    //   - id: string (required)
+    //   - customerName: string (required)
+    //   - customerContact: string (required)
+    //   - customerEmail: string (optional)
+    //   - items: list (required)
+    //   - assignedGroup: string (required)
+    //   - orderDate: string (required)
+    //   - isFulfilled: bool (required)
+    //   - totalPrice: number (required)
+    //   - donationAmount: number (required)
+    //   - deliveryOption: string (required)
+    //   - deliveryAddress: string (optional)
+    //   - deliveryWindow: string (optional)
+    //   - orderNumber: string (required)
+    //   - zelleConfirmationNumber: string (required)
+    //   - isRecurring: bool (required)
+    //   - recurringWeeksFulfilled: number (optional)
+    //   - recurringDates: list (optional)
+    //
+    // Collection: volunteers
+    // Document ID: {id}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - email: string (required)
+    //   - phone: string (required)
+    //   - group: string (required)
+    //
+    // Collection: availability
+    // Document ID: {id}
+    // Fields:
+    //   - id: string (required)
+    //   - volunteerId: string (required)
+    //   - dayOfWeek: number (optional)
+    //   - startTime: string (required)
+    //   - endTime: string (required)
+    //   - isRecurring: bool (required)
+    //   - specificDate: string (optional)
+    //
+    // Collection: verification_codes
+    // Document ID: {identifier}
+    // Fields:
+    //   - code: string (required)
+    //   - expires_at: number (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/system/admin_emails).data.value.split(',').hasAny([request.auth.token.email]) ||
+         (request.auth.token.email == "teisi.uaine@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /system/{key} {
+      allow read: if true; // Publicly readable for app config
+      allow write: if isAdmin();
+    }
+
+    match /products/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /ingredients/{name} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /orders/{id} {
+      allow read: if true; // Customers need to see their orders by ID
+      allow create: if true; // Anyone can place an order
+      allow update, delete: if isAdmin();
+    }
+
+    match /volunteers/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == id);
+    }
+
+    match /availability/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == request.resource.data.volunteerId);
+    }
+
+    match /verification_codes/{identifier} {
+      allow read, write: if true; // Needed for public verification flow
+    }
+  }
+}
