@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { ProductPrices, DeliveryOption, OrderSize } from '../types';
+import { ProductPrices, DeliveryOption, OrderSize, GroupName } from '../types';
 import { X, Trash2, Heart, AlertTriangle, ShoppingCart, Send, PackageCheck, Truck, Plus, Minus, Calendar, Clock, Edit2, User } from 'lucide-react';
 import { MiniCalendar } from './MiniCalendar';
 
 const OrderForm: React.FC = () => {
-  const { cart, cartId, donationAmount, setDonationAmount, removeFromCart, updateCartQuantity, placeOrder, clearCart, products, ingredients: allIngredients, isDeliveryEnabled } = useApp();
+  const { cart, cartId, donationAmount, setDonationAmount, removeFromCart, updateCartQuantity, placeOrder, clearCart, products, ingredients: allIngredients, isDeliveryEnabled, volunteers } = useApp();
   const [customerName, setCustomerName] = useState('');
   const [customerContact, setCustomerContact] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [deliveryOption, setDeliveryOption] = useState<DeliveryOption>('Pickup');
+  
+  // Sponsorship state
+  const [sponsorshipGroup, setSponsorshipGroup] = useState<GroupName | 'General'>('General');
+  const [selectedYouthId, setSelectedYouthId] = useState<string>('');
+  const [youthSearch, setYouthSearch] = useState('');
 
   const isIngredientAvailable = (name: string) => {
     const cleanName = name.replace(/\s*\(optional\)\s*/i, '').trim();
@@ -173,6 +178,8 @@ const OrderForm: React.FC = () => {
     localStorage.setItem('user_profile', JSON.stringify(profile));
 
     setLastOrderDetails({ deliveryOption });
+    const selectedYouth = volunteers.find(v => v.id === selectedYouthId);
+    
     placeOrder(
       customerName, 
       customerContact, 
@@ -181,7 +188,9 @@ const OrderForm: React.FC = () => {
       fullAddress, 
       zelleConfirmation, 
       isRecurring, 
-      isRecurring ? recurringDates : undefined
+      isRecurring ? recurringDates : undefined,
+      selectedYouthId || undefined,
+      selectedYouth?.name
     );
     
     // Reset form
@@ -196,6 +205,9 @@ const OrderForm: React.FC = () => {
     setZelleChecked(false);
     setZelleConfirmation('');
     setIsRecurring(false);
+    setSponsorshipGroup('General');
+    setSelectedYouthId('');
+    setYouthSearch('');
     setIsSubmitted(true);
   };
 
@@ -231,6 +243,98 @@ const OrderForm: React.FC = () => {
       )}
 
       <div className="space-y-6">
+        {/* Section 1: Sponsorship - NEW */}
+        <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+          <div className="bg-brand-orange/5 px-4 py-3 border-b border-brand-orange/10 flex items-center gap-2">
+            <User size={18} className="text-brand-orange" />
+            <h3 className="font-bold text-brand-orange uppercase text-xs tracking-widest">Sponsor a Youth</h3>
+          </div>
+          <div className="p-5 space-y-4">
+            <p className="text-xs text-brand-brown/70 leading-relaxed">
+              Who are you supporting today? You can sponsor a specific youth or the general ministry fund.
+            </p>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSponsorshipGroup('General');
+                  setSelectedYouthId('');
+                }}
+                className={`px-3 py-2 rounded-xl text-[10px] font-bold transition-all border ${sponsorshipGroup === 'General' ? 'bg-brand-orange border-brand-orange text-white' : 'bg-white border-gray-100 text-brand-brown hover:border-brand-orange/30'}`}
+              >
+                General Fund
+              </button>
+              {Object.values(GroupName).map(group => (
+                <button
+                  key={group}
+                  type="button"
+                  onClick={() => {
+                    setSponsorshipGroup(group);
+                    setSelectedYouthId('');
+                    setYouthSearch('');
+                  }}
+                  className={`px-3 py-2 rounded-xl text-[10px] font-bold transition-all border ${sponsorshipGroup === group ? 'bg-brand-orange border-brand-orange text-white' : 'bg-white border-gray-100 text-brand-brown hover:border-brand-orange/30'}`}
+                >
+                  {group.split('(')[0].trim()}
+                </button>
+              ))}
+            </div>
+
+            {sponsorshipGroup !== 'General' && (
+              <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder={`Search in ${sponsorshipGroup.split('(')[0].trim()}...`}
+                    value={youthSearch}
+                    onChange={(e) => setYouthSearch(e.target.value)}
+                    className="w-full p-3 pl-9 border border-gray-100 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-brand-orange outline-none transition-all text-xs"
+                  />
+                  <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                </div>
+
+                <div className="max-h-40 overflow-y-auto pr-2 space-y-1 custom-scrollbar">
+                  {volunteers
+                    .filter(v => v.group === sponsorshipGroup)
+                    .filter(v => v.name.toLowerCase().includes(youthSearch.toLowerCase()))
+                    .map(youth => (
+                      <button
+                        key={youth.id}
+                        type="button"
+                        onClick={() => setSelectedYouthId(youth.id)}
+                        className={`w-full text-left px-4 py-2 rounded-lg text-xs font-medium transition-all ${selectedYouthId === youth.id ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' : 'hover:bg-gray-100 text-brand-brown'}`}
+                      >
+                        {youth.name}
+                      </button>
+                    ))}
+                  {volunteers.filter(v => v.group === sponsorshipGroup).length === 0 && (
+                    <p className="text-[10px] text-gray-400 text-center py-2 italic">No members found in this group yet.</p>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {selectedYouthId && (
+              <div className="p-3 bg-brand-orange/5 border border-brand-orange/20 rounded-xl flex items-center justify-between animate-in zoom-in-95 duration-200">
+                <div className="flex items-center gap-2">
+                  <Heart size={14} className="text-brand-orange" />
+                  <p className="text-xs font-bold text-brand-brown">
+                    Sponsoring: <span className="text-brand-orange">{volunteers.find(v => v.id === selectedYouthId)?.name}</span>
+                  </p>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setSelectedYouthId('')}
+                  className="text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Section 1: Your Selection - Only show if cart has items */}
         {cart.length > 0 && (
           <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">

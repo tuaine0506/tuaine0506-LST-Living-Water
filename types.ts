@@ -47,6 +47,8 @@ export interface Order {
   customerEmail?: string;
   items: CartItem[];
   assignedGroup: GroupName;
+  sponsoredYouthId?: string;
+  sponsoredYouthName?: string;
   orderDate: string; // ISO string
   isFulfilled: boolean;
   totalPrice: number;

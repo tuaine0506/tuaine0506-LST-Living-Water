@@ -47,6 +47,8 @@
         "customerEmail": { "type": "string" },
         "items": { "type": "array", "items": { "$ref": "CartItem" } },
         "assignedGroup": { "type": "string" },
+        "sponsoredYouthId": { "type": "string" },
+        "sponsoredYouthName": { "type": "string" },
         "orderDate": { "type": "string" },
         "isFulfilled": { "type": "boolean" },
         "totalPrice": { "type": "number" },

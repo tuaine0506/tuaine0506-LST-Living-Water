@@ -27,7 +27,7 @@ interface AppContextType {
   updateCartQuantity: (productId: string, size: OrderSize, optionalIngredients: string[], quantity: number) => void;
   setDonationAmount: (amount: number) => void;
   clearCart: () => void;
-  placeOrder: (customerName: string, customerContact: string, customerEmail: string, deliveryOption: DeliveryOption, deliveryAddress: string | undefined, zelleConfirmationNumber: string, isRecurring: boolean, recurringDates?: string[]) => void;
+  placeOrder: (customerName: string, customerContact: string, customerEmail: string, deliveryOption: DeliveryOption, deliveryAddress: string | undefined, zelleConfirmationNumber: string, isRecurring: boolean, recurringDates?: string[], sponsoredYouthId?: string, sponsoredYouthName?: string) => void;
   updateOrder: (orderId: string, updatedData: Partial<Order>) => void;
   toggleOrderFulfilled: (orderId: string) => void;
   login: (password?: string) => Promise<boolean>;
@@ -554,7 +554,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     deliveryAddress: string | undefined, 
     zelleConfirmationNumber: string, 
     isRecurring: boolean, 
-    recurringDates?: string[]
+    recurringDates?: string[],
+    sponsoredYouthId?: string,
+    sponsoredYouthName?: string
   ) => {
     let currentId = cartId;
     if (!currentId) {
@@ -575,6 +577,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       items: [...cart],
       donationAmount: donationAmount,
       assignedGroup: GROUP_NAMES[Math.floor(Math.random() * GROUP_NAMES.length)],
+      sponsoredYouthId,
+      sponsoredYouthName,
       orderDate: new Date().toISOString(),
       isFulfilled: false,
       totalPrice: finalPrice,
