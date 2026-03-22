@@ -1,4 +1,27 @@
-import { Product, GroupName } from './types';
+import { Product, GroupName, DonationTier } from './types';
+
+export const FUNDRAISING_GOAL = 100;
+
+export const DONATION_TIERS: DonationTier[] = [
+  {
+    id: 'friendship',
+    name: 'Friendship Offering',
+    amount: 50,
+    reward: 'Digital Thank You Card',
+  },
+  {
+    id: 'blessing',
+    name: 'Blessing Basket',
+    amount: 100,
+    reward: "Name on our Virtual 'Wall of Donors'",
+  },
+  {
+    id: 'generosity',
+    name: 'Generosity Pillar',
+    amount: 250,
+    reward: 'Early Access to Event Updates & Special Recognition',
+  },
+];
 
 export const PRODUCTS: Product[] = [
   {

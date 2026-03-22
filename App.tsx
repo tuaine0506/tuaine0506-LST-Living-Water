@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { HashRouter, Route, Routes, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import HomePage from './pages/HomePage';
+import SubscriptionGoalPage from './pages/SubscriptionGoalPage';
 import FulfillmentPage from './pages/FulfillmentPage';
 import DashboardPage from './pages/DashboardPage';
 import SchedulePage from './pages/SchedulePage';
@@ -12,12 +13,12 @@ import IngredientsPage from './pages/IngredientsPage';
 import OrderHistoryPage from './pages/OrderHistoryPage';
 import ProfilePage from './pages/ProfilePage';
 import BrandAssetsPage from './pages/BrandAssetsPage';
-import { ShoppingCart, ClipboardList, BarChart3, CalendarDays, Lock, Unlock, Droplets, X, BookOpen, HelpCircle, PlayCircle, Truck, Leaf, History, User, Palette } from 'lucide-react';
+import { ShoppingCart, ClipboardList, BarChart3, CalendarDays, Lock, Unlock, Droplets, X, BookOpen, HelpCircle, PlayCircle, Truck, Leaf, History, User, Palette, Target } from 'lucide-react';
 import { useApp } from './context/AppContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 const AppContent: React.FC = () => {
-  const { cart, isAdmin, login, logout, notifications, dismissNotification } = useApp();
+  const { cart, isAdmin, login, loginWithGoogle, logout, notifications, dismissNotification } = useApp();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
@@ -60,8 +61,8 @@ const AppContent: React.FC = () => {
       }
     };
 
-    if (location.pathname !== '/') {
-      navigate('/');
+    if (location.pathname !== '/subscription-goal') {
+      navigate('/subscription-goal');
       setTimeout(executeScroll, 100);
     } else {
       executeScroll();
@@ -116,6 +117,7 @@ const AppContent: React.FC = () => {
       <main className="flex-grow container mx-auto p-4 md:p-6 mb-24">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/subscription-goal" element={<SubscriptionGoalPage />} />
           <Route path="/fulfillment" element={<ProtectedRoute><FulfillmentPage /></ProtectedRoute>} />
           <Route path="/deliveries" element={<ProtectedRoute><DeliveriesPage /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
@@ -131,7 +133,7 @@ const AppContent: React.FC = () => {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-brand-green shadow-top-lg z-20 p-2 border-t border-brand-light-green/20">
-        <div className={`container mx-auto grid ${isAdmin ? 'grid-cols-9' : 'grid-cols-3'} gap-1 transition-all duration-300`}>
+        <div className={`container mx-auto grid ${isAdmin ? 'grid-cols-10' : 'grid-cols-4'} gap-1 transition-all duration-300`}>
           <NavLink to="/" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
             <div className="relative">
               <ShoppingCart className="h-5 w-5 md:h-6 md:w-6" />
@@ -142,6 +144,11 @@ const AppContent: React.FC = () => {
               )}
             </div>
             <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Order</span>
+          </NavLink>
+
+          <NavLink to="/subscription-goal" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeLinkClasses : ''}`}>
+            <Target className="h-5 w-5 md:h-6 md:w-6" />
+            <span className="text-[9px] md:text-[10px] mt-1 font-bold uppercase tracking-tighter">Goal</span>
           </NavLink>
 
           {!isAdmin && (
@@ -239,6 +246,27 @@ const AppContent: React.FC = () => {
                   className="w-full bg-brand-orange text-white font-bold py-4 rounded-xl hover:bg-opacity-90 transition-all shadow-lg active:scale-95"
                 >
                   Login to Dashboard
+                </button>
+
+                <div className="relative py-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-200"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-white px-2 text-gray-400 font-bold">Or</span>
+                  </div>
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={async () => {
+                    const success = await loginWithGoogle();
+                    if (success) setShowLoginModal(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-3 bg-white border-2 border-brand-green text-brand-green font-bold py-4 rounded-xl hover:bg-brand-green/5 transition-all shadow-md active:scale-95"
+                >
+                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+                  Login with Google
                 </button>
                 
                 <button 

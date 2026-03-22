@@ -1,14 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Search, Filter, CheckCircle, Clock, ChevronDown, ChevronUp, Package, Truck, DollarSign, Calendar, Mail, Phone, MapPin, User, RefreshCw } from 'lucide-react';
+import { Search, Filter, CheckCircle, Clock, ChevronDown, ChevronUp, Package, Truck, DollarSign, Calendar, Mail, Phone, MapPin, User, RefreshCw, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Order } from '../types';
+import OrderCard from '../components/OrderCard';
+import EditOrderModal from '../components/EditOrderModal';
+import { RecurringScheduleVisual } from '../components/RecurringScheduleVisual';
 
 const AdminOrdersPage: React.FC = () => {
   const { orders, updateOrder, toggleOrderFulfilled } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'fulfilled'>('all');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
@@ -30,53 +34,9 @@ const AdminOrdersPage: React.FC = () => {
     setExpandedOrderId(expandedOrderId === id ? null : id);
   };
 
-  const handleStatusToggle = (e: React.MouseEvent, orderId: string) => {
-    e.stopPropagation();
-    toggleOrderFulfilled(orderId);
+  const handleStatusToggle = (order: Order) => {
+    toggleOrderFulfilled(order.id);
   };
-
-  const RecurringScheduleVisual = ({ order }: { order: Order }) => (
-    <div className="bg-teal-50/50 p-4 rounded-2xl border border-teal-100 space-y-3 mt-4">
-      <div className="flex justify-between items-center">
-        <h4 className="text-xs font-bold text-teal-800 uppercase tracking-widest flex items-center gap-2">
-          <RefreshCw size={14} className="animate-spin-slow" />
-          Recurring Schedule
-        </h4>
-        <span className="text-[10px] font-bold bg-teal-100 text-teal-700 px-2.5 py-1 rounded-full border border-teal-200">
-          {order.recurringWeeksFulfilled || 0} of 4 Weeks Completed
-        </span>
-      </div>
-      
-      <div className="grid grid-cols-4 gap-2">
-        {[0, 1, 2, 3].map((weekIdx) => {
-          const isCompleted = (order.recurringWeeksFulfilled || 0) > weekIdx;
-          const date = order.recurringDates?.[weekIdx];
-          const formattedDate = date ? format(new Date(date + 'T12:00:00'), 'MMM dd') : '---';
-
-          return (
-            <div 
-              key={weekIdx}
-              className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
-                isCompleted 
-                  ? 'bg-teal-500 border-teal-600 text-white shadow-sm' 
-                  : 'bg-white border-teal-100 text-teal-800'
-              }`}
-            >
-              <span className="text-[8px] uppercase font-bold opacity-70">Week {weekIdx + 1}</span>
-              <span className="text-[10px] font-mono font-bold">{formattedDate}</span>
-              {isCompleted && <CheckCircle size={10} className="mt-1" />}
-            </div>
-          );
-        })}
-      </div>
-      <p className="text-[10px] text-teal-700/70 italic text-center">
-        {order.isFulfilled 
-          ? "This recurring subscription has been fully completed." 
-          : `Next scheduled pickup/delivery: ${order.recurringDates?.[order.recurringWeeksFulfilled || 0] ? format(new Date(order.recurringDates[order.recurringWeeksFulfilled || 0] + 'T12:00:00'), 'EEEE, MMMM do') : 'TBD'}`
-        }
-      </p>
-    </div>
-  );
 
   return (
     <div className="space-y-6 pb-20">
@@ -126,99 +86,13 @@ const AdminOrdersPage: React.FC = () => {
           </div>
         ) : (
           filteredOrders.map((order) => (
-            <div key={order.id} className="bg-white rounded-2xl shadow-sm border border-brand-light-green/20 overflow-hidden">
-              <div className="bg-brand-cream/30 p-4 border-b border-brand-light-green/10 flex justify-between items-center">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-brand-green">{order.orderNumber}</span>
-                    <span className="text-xs text-brand-brown/60">• {format(new Date(order.orderDate), 'MMM dd')}</span>
-                  </div>
-                  <div className="font-bold text-brand-brown text-sm">{order.customerName}</div>
-                </div>
-                <button 
-                  onClick={(e) => handleStatusToggle(e, order.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-colors ${
-                    order.isFulfilled 
-                      ? 'bg-green-100 text-green-700 border border-green-200' 
-                      : 'bg-amber-100 text-amber-700 border border-amber-200'
-                  }`}
-                >
-                  {order.isFulfilled ? <CheckCircle size={12} /> : <Clock size={12} />}
-                  {order.isFulfilled ? 'Fulfilled' : 'Pending'}
-                </button>
-              </div>
-              
-              <div className="p-4 space-y-4">
-                {/* Items */}
-                <div className="space-y-2">
-                  {order.items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span className="text-brand-brown">
-                        <span className="font-bold">{item.quantity}x</span> {item.productName}
-                        {item.selectedOptionalIngredients && item.selectedOptionalIngredients.length > 0 && (
-                          <span className="block text-[10px] text-brand-brown/60 italic">
-                            + {item.selectedOptionalIngredients.join(', ')}
-                          </span>
-                        )}
-                      </span>
-                      <span className="font-mono text-brand-green font-bold">${(item.quantity * 35).toFixed(2)}</span>
-                    </div>
-                  ))}
-                  {order.donationAmount > 0 && (
-                    <div className="flex justify-between text-sm pt-2 border-t border-dashed border-brand-light-green/30">
-                      <span className="text-brand-brown italic">Donation</span>
-                      <span className="font-mono text-brand-green font-bold">${order.donationAmount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between pt-2 border-t border-brand-light-green/20">
-                    <span className="font-bold text-brand-green">Total</span>
-                    <span className="font-mono font-bold text-brand-green">${order.totalPrice.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                {/* Recurring Schedule Visual for Mobile */}
-                {order.isRecurring && <RecurringScheduleVisual order={order} />}
-
-                {/* Expandable Details */}
-                <button 
-                  onClick={() => toggleExpand(order.id)}
-                  className="w-full flex items-center justify-center gap-1 text-xs font-bold text-brand-brown/60 hover:text-brand-green pt-2"
-                >
-                  {expandedOrderId === order.id ? (
-                    <>Hide Details <ChevronUp size={14} /></>
-                  ) : (
-                    <>Show Details <ChevronDown size={14} /></>
-                  )}
-                </button>
-
-                {expandedOrderId === order.id && (
-                  <div className="pt-2 space-y-3 text-sm border-t border-brand-light-green/10 animate-in slide-in-from-top-2">
-                    <div className="flex items-start gap-2">
-                      <Mail size={14} className="text-brand-brown/40 mt-0.5" />
-                      <span className="text-brand-brown break-all">{order.customerEmail || 'N/A'}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Phone size={14} className="text-brand-brown/40 mt-0.5" />
-                      <span className="text-brand-brown">{order.customerContact}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Truck size={14} className="text-brand-brown/40 mt-0.5" />
-                      <span className="text-brand-brown font-medium">{order.deliveryOption}</span>
-                    </div>
-                    {order.deliveryAddress && (
-                      <div className="flex items-start gap-2">
-                        <MapPin size={14} className="text-brand-brown/40 mt-0.5" />
-                        <span className="text-brand-brown">{order.deliveryAddress}</span>
-                      </div>
-                    )}
-                    <div className="flex items-start gap-2">
-                      <DollarSign size={14} className="text-brand-brown/40 mt-0.5" />
-                      <span className="text-brand-brown">Zelle: <span className="font-mono font-bold text-brand-orange">{order.zelleConfirmationNumber}</span></span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <OrderCard 
+              key={order.id}
+              order={order}
+              isFulfilledView={order.isFulfilled}
+              onEdit={setEditingOrder}
+              onStatusToggle={handleStatusToggle}
+            />
           ))
         )}
       </div>
@@ -269,17 +143,32 @@ const AdminOrdersPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-4 text-center">
-                        <button 
-                          onClick={(e) => handleStatusToggle(e, order.id)}
-                          className={`p-2 rounded-full transition-colors ${
-                            order.isFulfilled 
-                              ? 'text-green-600 hover:bg-green-100' 
-                              : 'text-amber-500 hover:bg-amber-100'
-                          }`}
-                          title={order.isFulfilled ? "Mark as Pending" : "Mark as Fulfilled"}
-                        >
-                          {order.isFulfilled ? <CheckCircle size={20} /> : <Clock size={20} />}
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingOrder(order);
+                            }}
+                            className="p-2 rounded-full text-brand-green hover:bg-brand-light-green/10 transition-colors"
+                            title="Edit Order"
+                          >
+                            <Edit2 size={20} />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStatusToggle(order);
+                            }}
+                            className={`p-2 rounded-full transition-colors ${
+                              order.isFulfilled 
+                                ? 'text-green-600 hover:bg-green-100' 
+                                : 'text-amber-500 hover:bg-amber-100'
+                            }`}
+                            title={order.isFulfilled ? "Mark as Pending" : "Mark as Fulfilled"}
+                          >
+                            {order.isFulfilled ? <CheckCircle size={20} /> : <Clock size={20} />}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {expandedOrderId === order.id && (
@@ -373,6 +262,11 @@ const AdminOrdersPage: React.FC = () => {
           </table>
         </div>
       </div>
+      {/* Edit Order Modal */}
+      <EditOrderModal 
+        order={editingOrder}
+        onClose={() => setEditingOrder(null)}
+      />
     </div>
   );
 };

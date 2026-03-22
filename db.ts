@@ -1,6 +1,11 @@
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
-import firebaseConfig from './firebase-applet-config.json';
+import fs from 'fs';
+import path from 'path';
+
+const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+export const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
+
 import { 
   Product, 
   Order, 
@@ -10,13 +15,49 @@ import {
 } from './types.ts';
 
 // Initialize Firebase Admin
+let adminApp: admin.app.App;
 if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: firebaseConfig.projectId,
-  });
+  console.log('Initializing Firebase Admin with projectId:', firebaseConfig.projectId);
+  try {
+    // Try to initialize with explicit projectId from config first
+    adminApp = admin.initializeApp({
+      projectId: firebaseConfig.projectId
+    });
+    console.log('Firebase Admin initialized successfully with projectId. App name:', adminApp.name);
+  } catch (err) {
+    console.warn('Failed to initialize Firebase Admin with explicit projectId, trying default:', err);
+    try {
+      adminApp = admin.initializeApp();
+      console.log('Firebase Admin initialized successfully with default config. App name:', adminApp.name);
+    } catch (defaultErr) {
+      console.error('Failed to initialize Firebase Admin completely:', defaultErr);
+      throw defaultErr;
+    }
+  }
+} else {
+  console.log('Firebase Admin already initialized.');
+  adminApp = admin.app();
 }
 
-const firestore = getFirestore(firebaseConfig.firestoreDatabaseId);
+// Get Firestore instance for the specific database ID
+let firestore: admin.firestore.Firestore;
+try {
+  const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
+    ? firebaseConfig.firestoreDatabaseId
+    : undefined;
+    
+  console.log('Attempting to initialize Firestore with databaseId:', dbId || '(default)');
+  firestore = dbId ? getFirestore(adminApp, dbId) : getFirestore(adminApp);
+} catch (err) {
+  console.error('Failed to initialize Firestore with databaseId:', firebaseConfig.firestoreDatabaseId, err);
+  firestore = getFirestore(adminApp);
+}
+
+console.log('Firestore initialized. Database ID:', firestore.databaseId);
+console.log('Actual Firestore Project ID:', (firestore as any)._projectId || (firestore as any).projectId);
+console.log('Config Project ID:', firebaseConfig.projectId);
+console.log('GOOGLE_CLOUD_PROJECT env:', process.env.GOOGLE_CLOUD_PROJECT);
+console.log('Service account email:', (adminApp as any).options?.credential?.getAccessToken?.toString());
 
 export const OperationType = {
   CREATE: 'create',
@@ -31,20 +72,28 @@ export type OperationType = typeof OperationType[keyof typeof OperationType];
 
 interface FirestoreErrorInfo {
   error: string;
-  operationType: OperationType;
+  operationType: string;
   path: string | null;
   authInfo: {
     userId: string | null;
     email: string | null;
+    debug?: any;
   }
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+function handleFirestoreError(error: unknown, operationType: string, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
       userId: 'SERVER_ADMIN',
       email: 'SERVER_ADMIN',
+      debug: {
+        projectId: process.env.GOOGLE_CLOUD_PROJECT,
+        firebaseConfigProjectId: firebaseConfig.projectId,
+        databaseId: firebaseConfig.firestoreDatabaseId,
+        actualFirestoreProjectId: (firestore as any)._projectId || (firestore as any).projectId,
+        actualFirestoreDatabaseId: firestore.databaseId
+      }
     },
     operationType,
     path
@@ -56,8 +105,8 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export interface IDatabase {
   init(): Promise<void>;
   hasOrderForIdentifier(identifier: string): Promise<boolean>;
-  getSystemValue(key: string): Promise<string | null>;
-  setSystemValue(key: string, value: string): Promise<void>;
+  getSystemValue(key: string): Promise<any | null>;
+  setSystemValue(key: string, value: any): Promise<void>;
   getAll<T>(table: string): Promise<T[]>;
   getById<T>(table: string, id: string): Promise<T | null>;
   insert(table: string, id: string, data: any): Promise<void>;
@@ -66,6 +115,7 @@ export interface IDatabase {
   saveVerificationCode(identifier: string, code: string, expiresAt: number): Promise<void>;
   getVerificationCode(identifier: string): Promise<{ code: string; expires_at: number } | null>;
   deleteVerificationCode(identifier: string): Promise<void>;
+  verifyIdToken(idToken: string): Promise<any>;
   saveSession(token: string, expiresAt: number): Promise<void>;
   getSession(token: string): Promise<{ expires_at: number } | null>;
   deleteSession(token: string): Promise<void>;
@@ -75,11 +125,37 @@ export interface IDatabase {
 class FirestoreDB implements IDatabase {
   async init(): Promise<void> {
     // Test connection
+    const path = 'system/connection_test';
     try {
-      await firestore.collection('system').doc('connection_test').get();
+      console.log('Testing Firestore connection to:', path);
+      console.log('Firestore Database ID:', firestore.databaseId);
+      
+      // Use a promise with timeout for the connection test
+      const connectionTest = firestore.collection('system').doc('connection_test').get();
+      const timeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Firestore connection timeout')), 10000)
+      );
+      
+      const snap = await Promise.race([connectionTest, timeout]) as admin.firestore.DocumentSnapshot;
+      console.log('Firestore connection successful. Snap exists:', snap.exists);
     } catch (error) {
-      if (error instanceof Error && error.message.includes('offline')) {
-        console.error("Please check your Firebase configuration.");
+      console.error('Firestore connection failed during init:', error);
+      
+      // If we failed with PERMISSION_DENIED or NOT_FOUND and we are using a named database, try falling back to (default)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isNotFoundError = errorMessage.includes('NOT_FOUND') || errorMessage.includes('5');
+      const isPermissionError = errorMessage.includes('PERMISSION_DENIED');
+      
+      if ((isPermissionError || isNotFoundError) && firestore.databaseId !== '(default)') {
+        console.log(`Falling back to (default) database due to ${isPermissionError ? 'PERMISSION_DENIED' : 'NOT_FOUND'}.`);
+        try {
+          firestore = getFirestore(adminApp);
+          console.log('New Firestore Database ID:', firestore.databaseId);
+          const snap = await firestore.collection('system').doc('connection_test').get();
+          console.log('Firestore connection to (default) successful. Snap exists:', snap.exists);
+        } catch (fallbackError) {
+          console.error('Firestore connection to (default) also failed:', fallbackError);
+        }
       }
     }
   }
@@ -96,17 +172,21 @@ class FirestoreDB implements IDatabase {
     }
   }
 
-  async getSystemValue(key: string): Promise<string | null> {
+  async getSystemValue(key: string): Promise<any | null> {
+    const path = `system/${key}`;
     try {
+      console.log('Getting system value for:', key);
       const snap = await firestore.collection('system').doc(key).get();
+      console.log(`System value for ${key} exists:`, snap.exists);
       return snap.exists ? (snap.data() as any).value : null;
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `system/${key}`);
+      console.error(`Failed to get system value for ${key}:`, error);
+      handleFirestoreError(error, OperationType.GET, path);
       return null;
     }
   }
 
-  async setSystemValue(key: string, value: string): Promise<void> {
+  async setSystemValue(key: string, value: any): Promise<void> {
     try {
       await firestore.collection('system').doc(key).set({ value });
     } catch (error) {
@@ -182,6 +262,10 @@ class FirestoreDB implements IDatabase {
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `verification_codes/${identifier}`);
     }
+  }
+
+  async verifyIdToken(idToken: string): Promise<any> {
+    return admin.auth().verifyIdToken(idToken);
   }
 
   async saveSession(token: string, expiresAt: number): Promise<void> {

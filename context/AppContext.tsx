@@ -31,6 +31,7 @@ interface AppContextType {
   updateOrder: (orderId: string, updatedData: Partial<Order>) => void;
   toggleOrderFulfilled: (orderId: string) => void;
   login: (password?: string) => Promise<boolean>;
+  loginWithGoogle: () => Promise<boolean>;
   logout: () => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   toggleProductAvailability: (productId: string) => void;
@@ -111,21 +112,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Initial fetch of orders and products
     fetch('/api/orders')
       .then(res => res.json())
-      .then(data => setOrders(data))
+      .then(data => {
+        if (Array.isArray(data)) {
+          setOrders(data);
+        } else {
+          console.error('Failed to fetch orders:', data.error || 'Unknown error');
+        }
+      })
       .catch(err => console.error('Failed to fetch orders:', err));
 
     fetch('/api/products')
       .then(res => res.json())
       .then(data => {
-        if (data.length > 0) {
-          setProducts(data);
+        if (Array.isArray(data)) {
+          if (data.length > 0) {
+            setProducts(data);
+          } else {
+            // Sync local products to server if server is empty
+            fetch('/api/products/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(PRODUCTS),
+            });
+          }
         } else {
-          // Sync local products to server if server is empty
-          fetch('/api/products/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(PRODUCTS),
-          });
+          console.error('Failed to fetch products:', data.error || 'Unknown error');
         }
       })
       .catch(err => console.error('Failed to fetch products:', err));
@@ -133,30 +144,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     fetch('/api/ingredients')
       .then(res => res.json())
       .then(data => {
-        if (data.length > 0) {
-          setIngredients(data);
+        if (Array.isArray(data)) {
+          if (data.length > 0) {
+            setIngredients(data);
+          } else {
+            // Extract unique ingredients from PRODUCTS
+            const uniqueIngredients = Array.from(new Set(PRODUCTS.flatMap(p => p.ingredients)));
+            const initialIngredients: Ingredient[] = uniqueIngredients.map(name => ({ name, available: true }));
+            
+            fetch('/api/ingredients/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(initialIngredients),
+            });
+          }
         } else {
-          // Extract unique ingredients from PRODUCTS
-          const uniqueIngredients = Array.from(new Set(PRODUCTS.flatMap(p => p.ingredients)));
-          const initialIngredients: Ingredient[] = uniqueIngredients.map(name => ({ name, available: true }));
-          
-          fetch('/api/ingredients/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(initialIngredients),
-          });
+          console.error('Failed to fetch ingredients:', data.error || 'Unknown error');
         }
       })
       .catch(err => console.error('Failed to fetch ingredients:', err));
 
     fetch('/api/volunteers')
       .then(res => res.json())
-      .then(data => setVolunteers(data))
+      .then(data => {
+        if (Array.isArray(data)) {
+          setVolunteers(data);
+        } else {
+          console.error('Failed to fetch volunteers:', data.error || 'Unknown error');
+        }
+      })
       .catch(err => console.error('Failed to fetch volunteers:', err));
 
     fetch('/api/availability')
       .then(res => res.json())
-      .then(data => setAvailability(data))
+      .then(data => {
+        if (Array.isArray(data)) {
+          setAvailability(data);
+        } else {
+          console.error('Failed to fetch availability:', data.error || 'Unknown error');
+        }
+      })
       .catch(err => console.error('Failed to fetch availability:', err));
 
     fetch('/api/settings')
@@ -192,6 +219,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}`);
 
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+      // If already admin, send auth
+      const token = window.localStorage.getItem('adminToken');
+      if (token) {
+        try {
+          const parsedToken = JSON.parse(token);
+          if (parsedToken) {
+            ws.send(JSON.stringify({ type: 'ADMIN_AUTH', payload: { token: parsedToken } }));
+          }
+        } catch (e) {
+          console.error('Failed to parse admin token for WS auth:', e);
+        }
+      }
+    };
+
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       switch (data.type) {
@@ -210,6 +253,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setAvailability(data.payload.availability);
           }
           setIsDeliveryEnabled(data.payload.isDeliveryEnabled);
+          break;
+        case 'ADMIN_DATA':
+          setOrders(data.payload.orders);
+          setVolunteers(data.payload.volunteers);
+          setAvailability(data.payload.availability);
           break;
         case 'INIT_ORDERS':
           setOrders(data.payload);
@@ -243,7 +291,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     return () => ws.close();
-  }, []);
+  }, [isAdmin]); // Re-connect or re-auth when isAdmin changes
 
   useEffect(() => {
     const generateSchedule = () => {
@@ -288,6 +336,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       console.error('Login failed:', err);
     }
     return false;
+  };
+
+  const loginWithGoogle = async (): Promise<boolean> => {
+    try {
+      const { auth, googleProvider, signInWithPopup } = await import('../firebase');
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+      
+      const response = await fetch('/api/admin/google-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.token) {
+          setAdminToken(data.token);
+        }
+        setIsAdmin(true);
+        addNotification('Logged in as admin with Google', 'success');
+        return true;
+      } else {
+        const data = await response.json();
+        addNotification(data.error || 'Google login failed', 'warning');
+        return false;
+      }
+    } catch (error) {
+      console.error('Google login error:', error);
+      addNotification('An error occurred during Google login', 'warning');
+      return false;
+    }
   };
 
   const logout = async () => {
@@ -694,7 +774,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   return (
-    <AppContext.Provider value={{ products, orders, cart, cartId, donationAmount, setDonationAmount, schedule, isAdmin, notifications, ingredients, volunteers, availability, isDeliveryEnabled, addToCart, removeFromCart, updateCartQuantity, clearCart, placeOrder, updateOrder, toggleOrderFulfilled, login, logout, changePassword, toggleProductAvailability, updateProduct, toggleIngredientAvailability, toggleDeliveryEnabled, resetProducts, addProduct, deleteProduct, addIngredient, deleteIngredient, dismissNotification, addVolunteer, updateVolunteer, deleteVolunteer, addAvailability, updateAvailability, deleteAvailability, addNotification }}>
+    <AppContext.Provider value={{ products, orders, cart, cartId, donationAmount, setDonationAmount, schedule, isAdmin, notifications, ingredients, volunteers, availability, isDeliveryEnabled, addToCart, removeFromCart, updateCartQuantity, clearCart, placeOrder, updateOrder, toggleOrderFulfilled, login, loginWithGoogle, logout, changePassword, toggleProductAvailability, updateProduct, toggleIngredientAvailability, toggleDeliveryEnabled, resetProducts, addProduct, deleteProduct, addIngredient, deleteIngredient, dismissNotification, addVolunteer, updateVolunteer, deleteVolunteer, addAvailability, updateAvailability, deleteAvailability, addNotification }}>
       {children}
     </AppContext.Provider>
   );

@@ -5,6 +5,7 @@ import { Check, Package, X, Utensils, Truck, RefreshCw, Heart, Edit2, ShoppingBa
 import NotificationModal from '../components/NotificationModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import EditOrderModal from '../components/EditOrderModal';
+import OrderCard from '../components/OrderCard';
 
 const FulfillmentPage: React.FC = () => {
   const { orders, products, toggleOrderFulfilled, updateOrder, ingredients: allIngredients, toggleIngredientAvailability } = useApp();
@@ -112,185 +113,7 @@ const FulfillmentPage: React.FC = () => {
     }
   };
 
-  interface OrderCardProps {
-    order: Order;
-    isFulfilledView?: boolean;
-  }
 
-  const OrderCard: React.FC<OrderCardProps> = ({ order, isFulfilledView = false }) => (
-    <div className={`p-4 rounded-lg shadow-md ${isFulfilledView ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'} border flex flex-col justify-between relative`}>
-      {!isFulfilledView && (
-        <button 
-          onClick={() => setEditingOrder(order)}
-          className="absolute top-2 right-2 p-1.5 text-brand-green hover:bg-brand-cream rounded-md transition-colors"
-          title="Edit Order"
-        >
-          <Edit2 size={16} />
-        </button>
-      )}
-      <div>
-        <div className="flex justify-between items-start">
-          <div className="pr-6">
-            <p className="font-bold text-brand-green">{order.customerName}</p>
-            <p className="text-sm text-gray-600">{order.customerContact}</p>
-            {order.customerEmail && (
-               <p className="text-xs text-brand-orange flex items-center gap-1 mt-0.5 font-medium truncate">
-                <Mail size={12} /> {order.customerEmail}
-               </p>
-            )}
-            <p className="text-sm font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded inline-block mt-2">#{order.orderNumber}</p>
-          </div>
-          <div className="text-right">
-            <p className="font-bold text-brand-orange">${order.totalPrice.toFixed(2)}</p>
-            <p className="text-xs text-gray-500">{new Date(order.orderDate).toLocaleDateString()}</p>
-          </div>
-        </div>
-
-        <div className="mt-2 text-xs text-gray-500">
-          Zelle Conf #: <span className="font-medium text-gray-700">{order.zelleConfirmationNumber}</span>
-        </div>
-        
-        <div className="mt-2 border-t pt-2 space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-                <div className={`inline-flex items-center gap-2 text-sm font-semibold px-2 py-1 rounded-full ${order.deliveryOption === 'Delivery' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
-                    {order.deliveryOption === 'Delivery' ? <Truck size={14} /> : <Package size={14} />}
-                    {order.deliveryOption}
-                </div>
-                 {order.isRecurring && (
-                    <div className="flex flex-col gap-1">
-                      <div className="inline-flex items-center gap-1 text-sm font-semibold px-2 py-1 rounded-full bg-teal-100 text-teal-800">
-                          <RefreshCw size={14} /> Recurring
-                      </div>
-                    </div>
-                 )}
-            </div>
-
-          {order.deliveryOption === 'Delivery' && order.deliveryAddress && (
-            <p className="text-xs text-gray-600 pl-1 border-l-2 ml-1">{order.deliveryAddress}</p>
-          )}
-        </div>
-        
-        <div className="mt-4 space-y-3">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Order Details</p>
-          {order.items.map((item, index) => {
-            const missing = getMissingIngredients(item.productId);
-            return (
-              <div key={index} className={`p-2 rounded-lg border ${missing.length > 0 ? 'bg-red-50 border-red-200' : 'bg-brand-cream/10 border-brand-cream/20'}`}>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="font-bold text-brand-brown">{item.quantity}x {item.productName}</span>
-                  <span className="text-[10px] bg-white px-1.5 rounded border">7PK</span>
-                </div>
-                {missing.length > 0 && (
-                  <p className="text-[9px] text-red-600 font-bold mt-1 uppercase flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse" />
-                    Missing: {missing.join(', ')}
-                  </p>
-                )}
-                {item.selectedOptionalIngredients && item.selectedOptionalIngredients.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {item.selectedOptionalIngredients.map((opt, i) => (
-                      <span key={i} className="flex items-center gap-0.5 text-[9px] bg-brand-orange/10 text-brand-orange px-1.5 py-0.5 rounded-full border border-brand-orange/20 font-bold">
-                         <CheckCircle2 size={10} /> {opt.replace(/\s*\(optional\)\s*/i, '').trim()}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {order.donationAmount > 0 && (
-            <div className="text-brand-orange font-bold text-xs flex items-center gap-1 mt-1 bg-brand-orange/5 p-2 rounded-lg border border-brand-orange/10">
-                <Heart size={14} /> Donation: ${order.donationAmount.toFixed(2)}
-            </div>
-          )}
-        </div>
-      </div>
-      
-      {order.isRecurring ? (
-        <div className="mt-4 space-y-2">
-            <div className="bg-teal-50 p-3 rounded-xl border border-teal-100 shadow-sm">
-                <div className="flex justify-between items-center mb-3">
-                    <p className="text-xs font-bold text-teal-800 flex items-center gap-1.5">
-                        <RefreshCw size={14} className="animate-spin-slow" /> 
-                        Recurring Subscription
-                    </p>
-                    <span className="text-[10px] font-bold bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full border border-teal-200">
-                        {order.recurringWeeksFulfilled || 0} / 4 Weeks
-                    </span>
-                </div>
-                
-                <div className="grid grid-cols-4 gap-1.5">
-                    {[0, 1, 2, 3].map((weekIdx) => {
-                        const isCompleted = (order.recurringWeeksFulfilled || 0) > weekIdx;
-                        const isNext = (order.recurringWeeksFulfilled || 0) === weekIdx;
-                        const date = order.recurringDates?.[weekIdx];
-                        const formattedDate = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-
-                        return (
-                            <button
-                                key={weekIdx}
-                                onClick={() => !isFulfilledView && handleRecurringWeekToggle(order, weekIdx)}
-                                disabled={isFulfilledView || (!isCompleted && !isNext)}
-                                className={`relative py-2 rounded-lg text-[10px] font-bold border transition-all flex flex-col items-center justify-center gap-1 ${
-                                    isCompleted 
-                                        ? 'bg-teal-500 text-white border-teal-600 shadow-inner' 
-                                        : isNext && !isFulfilledView
-                                            ? 'bg-white text-teal-600 border-teal-300 hover:border-teal-400 hover:bg-teal-50 shadow-sm'
-                                            : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                                }`}
-                            >
-                                {isCompleted && (
-                                    <div className="absolute -top-1 -right-1 bg-white text-teal-500 rounded-full shadow-sm">
-                                        <CheckCircle2 size={10} />
-                                    </div>
-                                )}
-                                <span className="uppercase tracking-tighter text-[8px] opacity-70">Week {weekIdx + 1}</span>
-                                <span className="font-mono">{formattedDate || '---'}</span>
-                            </button>
-                        );
-                    })}
-                </div>
-                
-                {isFulfilledView && (
-                     <button
-                        onClick={() => handleFulfillClick(order)}
-                        className="w-full mt-3 py-2 px-4 rounded-lg font-bold text-xs text-teal-800 bg-white hover:bg-teal-50 border border-teal-200 flex items-center justify-center transition-colors shadow-sm"
-                    >
-                        <RefreshCw className="mr-2 h-3.5 w-3.5" /> Reset to Active
-                    </button>
-                )}
-            </div>
-            {!isFulfilledView && (
-                <button
-                    onClick={() => setEditingOrder(order)}
-                    className="w-full py-2 px-4 rounded-lg font-semibold text-brand-green bg-brand-cream/30 hover:bg-brand-cream/50 border border-brand-green/20 flex items-center justify-center transition-colors text-sm"
-                >
-                    <Edit2 className="mr-2 h-4 w-4" /> Edit Order Details
-                </button>
-            )}
-        </div>
-      ) : (
-        <div className="mt-4 space-y-2">
-            {!isFulfilledView && (
-                <button
-                    onClick={() => setEditingOrder(order)}
-                    className="w-full py-2 px-4 rounded-lg font-semibold text-brand-green bg-brand-cream/30 hover:bg-brand-cream/50 border border-brand-green/20 flex items-center justify-center transition-colors text-sm"
-                >
-                    <Edit2 className="mr-2 h-4 w-4" /> Edit Order Details
-                </button>
-            )}
-            <button
-                onClick={() => handleFulfillClick(order)}
-                className={`w-full py-2 px-4 rounded-lg font-semibold text-white flex items-center justify-center transition-colors ${
-                isFulfilledView ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600'
-                }`}
-            >
-                {isFulfilledView ? <><X className="mr-2 h-4 w-4" />Mark as Unfulfilled</> : <><Check className="mr-2 h-4 w-4" />Mark as Fulfilled</>}
-            </button>
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <div className="space-y-8">
@@ -376,7 +199,17 @@ const FulfillmentPage: React.FC = () => {
         </div>
         {unfulfilledOrders.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {unfulfilledOrders.map(order => <OrderCard key={order.id} order={order} />)}
+            {unfulfilledOrders.map(order => (
+              <OrderCard 
+                key={order.id} 
+                order={order} 
+                onEdit={setEditingOrder}
+                onStatusToggle={handleFulfillClick}
+                onRecurringWeekToggle={handleRecurringWeekToggle}
+                getMissingIngredients={getMissingIngredients}
+                initiallyExpanded={true}
+              />
+            ))}
           </div>
         ) : (
           <p className="text-gray-500">All orders have been fulfilled!</p>
@@ -390,7 +223,17 @@ const FulfillmentPage: React.FC = () => {
         </div>
          {fulfilledOrders.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {fulfilledOrders.map(order => <OrderCard key={order.id} order={order} isFulfilledView />)}
+            {fulfilledOrders.map(order => (
+              <OrderCard 
+                key={order.id} 
+                order={order} 
+                isFulfilledView 
+                onEdit={setEditingOrder}
+                onStatusToggle={handleFulfillClick}
+                onRecurringWeekToggle={handleRecurringWeekToggle}
+                getMissingIngredients={getMissingIngredients}
+              />
+            ))}
           </div>
         ) : (
            <p className="text-gray-500">No orders fulfilled yet.</p>

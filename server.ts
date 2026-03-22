@@ -1,27 +1,31 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import fs from 'fs/promises';
 import path from 'path';
 import nodemailer from 'nodemailer';
-import { db } from './db.ts';
+import { db, firebaseConfig } from './db.ts';
 
 const DATA_FILE = path.join(process.cwd(), 'data.json');
 
 // Helper to initialize default system values
 const initSystem = async () => {
-  const adminPassword = await db.getSystemValue('adminPassword');
-  if (!adminPassword) {
+  try {
+    // Force reset admin password as requested by user
     await db.setSystemValue('adminPassword', 'admin123');
-  }
-  const isDeliveryEnabled = await db.getSystemValue('isDeliveryEnabled');
-  if (!isDeliveryEnabled) {
-    await db.setSystemValue('isDeliveryEnabled', 'false');
-  }
-  const allowedAdminEmails = await db.getSystemValue('allowedAdminEmails');
-  if (!allowedAdminEmails) {
-    await db.setSystemValue('allowedAdminEmails', '');
+    console.log('Admin password reset to admin123');
+    const isDeliveryEnabled = await db.getSystemValue('isDeliveryEnabled');
+    if (isDeliveryEnabled === null) {
+      await db.setSystemValue('isDeliveryEnabled', false);
+    }
+    const allowedAdminEmails = await db.getSystemValue('allowedAdminEmails');
+    if (!allowedAdminEmails || !Array.isArray(allowedAdminEmails)) {
+      // Default admin email from runtime context
+      await db.setSystemValue('allowedAdminEmails', ['teisi.uaine@gmail.com']);
+    }
+  } catch (error) {
+    console.error('Failed to initialize system values:', error);
+    throw error;
   }
 };
 
@@ -83,41 +87,137 @@ const migrateData = async () => {
 };
 
 async function startServer() {
-  await db.init();
-  await initSystem();
-  await initEmail();
-  await migrateData();
+  console.log('Starting server...');
+  console.log('Environment GOOGLE_CLOUD_PROJECT:', process.env.GOOGLE_CLOUD_PROJECT);
+  console.log('Environment NODE_ENV:', process.env.NODE_ENV);
+  
+  try {
+    await db.init();
+    
+    // Seed initial data if empty
+    try {
+      const products = await db.getAll('products');
+      if (products.length === 0) {
+        console.log('Seeding initial products...');
+        await db.bulkInsert('products', [
+          {
+            id: 'p1',
+            name: 'Classic Sea Moss Gel',
+            description: 'Pure, wild-crafted gold sea moss gel. Rich in 92 minerals.',
+            imageColor: 'bg-amber-100',
+            ingredients: ['Gold Sea Moss', 'Spring Water', 'Key Lime'],
+            available: true
+          },
+          {
+            id: 'p2',
+            name: 'Elderberry Infused Gel',
+            description: 'Immune-boosting sea moss gel with organic elderberries.',
+            imageColor: 'bg-purple-100',
+            ingredients: ['Gold Sea Moss', 'Spring Water', 'Elderberries', 'Honey'],
+            available: true
+          }
+        ], 'id');
+      }
+      
+      const ingredients = await db.getAll('ingredients');
+      if (ingredients.length === 0) {
+        console.log('Seeding initial ingredients...');
+        await db.bulkInsert('ingredients', [
+          { name: 'Gold Sea Moss', available: true },
+          { name: 'Spring Water', available: true },
+          { name: 'Key Lime', available: true },
+          { name: 'Elderberries', available: true },
+          { name: 'Honey', available: true }
+        ], 'name');
+      }
+    } catch (seedError) {
+      console.error('Initial seeding failed (might be expected if DB is not ready):', seedError);
+    }
+  } catch (err) {
+    console.error('Database initialization failed:', err);
+  }
 
   const app = express();
   const server = createServer(app);
   const wss = new WebSocketServer({ server });
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  }
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    
+    // Run background initialization tasks
+    (async () => {
+      try {
+        await initSystem();
+        await initEmail();
+        await migrateData();
+        console.log('Background initialization complete');
+      } catch (err) {
+        console.error('Background initialization failed:', err);
+      }
+    })();
+  });
 
   app.use(express.json());
+
+  // Request logging middleware
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+  });
 
   // WebSocket connection handling
   wss.on('connection', async (ws) => {
     console.log('Client connected');
     
-    // Fetch current state
+    // Fetch public state only
     const products = await db.getAll('products');
-    const orders = await db.getAll('orders');
     const ingredients = await db.getAll('ingredients');
-    const volunteers = await db.getAll('volunteers');
-    const availability = await db.getAll('availability');
     const isDeliveryEnabledStr = await db.getSystemValue('isDeliveryEnabled');
 
     ws.send(JSON.stringify({ 
       type: 'INIT_DATA', 
       payload: { 
-        orders, 
+        orders: [], // No orders for public
         products, 
         ingredients, 
-        volunteers, 
-        availability,
+        volunteers: [], // No volunteers for public
+        availability: [], // No availability for public
         isDeliveryEnabled: isDeliveryEnabledStr === 'true'
       } 
     }));
+
+    ws.on('message', async (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        if (data.type === 'ADMIN_AUTH' && data.payload.token) {
+          const session = await db.getSession(data.payload.token);
+          if (session && session.expires_at > Date.now()) {
+            console.log('Admin authenticated via WebSocket');
+            const orders = await db.getAll('orders');
+            const volunteers = await db.getAll('volunteers');
+            const availability = await db.getAll('availability');
+            
+            ws.send(JSON.stringify({
+              type: 'ADMIN_DATA',
+              payload: { orders, volunteers, availability }
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('Error handling WebSocket message:', err);
+      }
+    });
 
     ws.on('close', () => console.log('Client disconnected'));
   });
@@ -207,6 +307,29 @@ async function startServer() {
       res.json({ success: true, token: sessionToken });
     } else {
       res.status(401).json({ success: false, error: 'Invalid password' });
+    }
+  });
+
+  app.post('/api/admin/google-login', async (req, res) => {
+    const { idToken } = req.body;
+    if (!idToken) return res.status(400).json({ success: false, error: 'No ID token provided' });
+
+    try {
+      const decodedToken = await db.verifyIdToken(idToken);
+      const email = decodedToken.email;
+      const allowedAdminEmails = await db.getSystemValue('allowedAdminEmails') || [];
+
+      if (email && allowedAdminEmails.includes(email)) {
+        const sessionToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+        const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+        await db.saveSession(sessionToken, expiresAt);
+        res.json({ success: true, token: sessionToken });
+      } else {
+        res.status(403).json({ success: false, error: 'Email not authorized as admin' });
+      }
+    } catch (error) {
+      console.error('Google login error:', error);
+      res.status(401).json({ success: false, error: 'Invalid ID token' });
     }
   });
 
@@ -309,142 +432,233 @@ async function startServer() {
     }
   });
 
+  // API Routes - Health & Debug
+  app.get('/api/health', (req, res) => {
+    res.json({ 
+      status: 'ok',
+      projectId: process.env.GOOGLE_CLOUD_PROJECT,
+      firebaseConfigProjectId: firebaseConfig.projectId,
+      databaseId: firebaseConfig.firestoreDatabaseId
+    });
+  });
+
+  app.get('/api/test-firestore', async (req, res) => {
+    try {
+      const collections = await db.getAll('availability');
+      res.json({ success: true, count: collections.length });
+    } catch (error: any) {
+      res.status(500).json({ 
+        success: false, 
+        error: error.message,
+        stack: error.stack,
+        projectId: process.env.GOOGLE_CLOUD_PROJECT,
+        firebaseConfigProjectId: firebaseConfig.projectId,
+        databaseId: firebaseConfig.firestoreDatabaseId
+      });
+    }
+  });
+
   // API Routes - Products
   app.get('/api/products', async (req, res) => {
-    const products = await db.getAll('products');
-    res.json(products);
+    try {
+      const products = await db.getAll('products');
+      res.json(products);
+    } catch (error) {
+      console.error('Failed to get products:', error);
+      res.status(500).json({ error: 'Failed to get products' });
+    }
   });
 
   app.post('/api/products/sync', async (req, res) => {
-    const products = await db.getAll('products');
-    if (products.length === 0 && Array.isArray(req.body)) {
-      await db.bulkInsert('products', req.body, 'id');
-      broadcast({ type: 'UPDATE_PRODUCTS', payload: req.body });
-      res.json(req.body);
-    } else {
-      res.json(products);
+    try {
+      const products = await db.getAll('products');
+      if (products.length === 0 && Array.isArray(req.body)) {
+        await db.bulkInsert('products', req.body, 'id');
+        broadcast({ type: 'UPDATE_PRODUCTS', payload: req.body });
+        res.json(req.body);
+      } else {
+        res.json(products);
+      }
+    } catch (error) {
+      console.error('Failed to sync products:', error);
+      res.status(500).json({ error: 'Failed to sync products' });
     }
   });
 
   app.post('/api/products', async (req, res) => {
-    const newProduct = req.body;
-    await db.insert('products', newProduct.id, newProduct);
-    
-    const products = await db.getAll('products');
-    broadcast({ type: 'UPDATE_PRODUCTS', payload: products });
-    res.status(201).json(newProduct);
-  });
-
-  app.delete('/api/products/:id', async (req, res) => {
-    const { id } = req.params;
-    await db.delete('products', id);
-    
-    const products = await db.getAll('products');
-    broadcast({ type: 'UPDATE_PRODUCTS', payload: products });
-    res.status(204).send();
-  });
-
-  app.patch('/api/products/:id', async (req, res) => {
-    const { id } = req.params;
-    const updates = req.body;
-    
-    const product = await db.getById<any>('products', id);
-    if (product) {
-      const updatedProduct = { ...product, ...updates };
-      await db.update('products', id, updatedProduct);
+    try {
+      const newProduct = req.body;
+      await db.insert('products', newProduct.id, newProduct);
       
       const products = await db.getAll('products');
       broadcast({ type: 'UPDATE_PRODUCTS', payload: products });
-      res.json(updatedProduct);
-    } else {
-      res.status(404).json({ error: 'Product not found' });
+      res.status(201).json(newProduct);
+    } catch (error) {
+      console.error('Failed to add product:', error);
+      res.status(500).json({ error: 'Failed to add product' });
+    }
+  });
+
+  app.delete('/api/products/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.delete('products', id);
+      
+      const products = await db.getAll('products');
+      broadcast({ type: 'UPDATE_PRODUCTS', payload: products });
+      res.status(204).send();
+    } catch (error) {
+      console.error('Failed to delete product:', error);
+      res.status(500).json({ error: 'Failed to delete product' });
+    }
+  });
+
+  app.patch('/api/products/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const product = await db.getById<any>('products', id);
+      if (product) {
+        const updatedProduct = { ...product, ...updates };
+        await db.update('products', id, updatedProduct);
+        
+        const products = await db.getAll('products');
+        broadcast({ type: 'UPDATE_PRODUCTS', payload: products });
+        res.json(updatedProduct);
+      } else {
+        res.status(404).json({ error: 'Product not found' });
+      }
+    } catch (error) {
+      console.error('Failed to update product:', error);
+      res.status(500).json({ error: 'Failed to update product' });
     }
   });
 
   // API Routes - Ingredients
   app.get('/api/ingredients', async (req, res) => {
-    const ingredients = await db.getAll('ingredients');
-    res.json(ingredients);
+    try {
+      const ingredients = await db.getAll('ingredients');
+      res.json(ingredients);
+    } catch (error) {
+      console.error('Failed to get ingredients:', error);
+      res.status(500).json({ error: 'Failed to get ingredients' });
+    }
   });
 
   app.post('/api/ingredients/sync', async (req, res) => {
-    const ingredients = await db.getAll('ingredients');
-    if (ingredients.length === 0 && Array.isArray(req.body)) {
-      await db.bulkInsert('ingredients', req.body, 'name');
-      broadcast({ type: 'UPDATE_INGREDIENTS', payload: req.body });
-      res.json(req.body);
-    } else {
-      res.json(ingredients);
+    try {
+      const ingredients = await db.getAll('ingredients');
+      if (ingredients.length === 0 && Array.isArray(req.body)) {
+        await db.bulkInsert('ingredients', req.body, 'name');
+        broadcast({ type: 'UPDATE_INGREDIENTS', payload: req.body });
+        res.json(req.body);
+      } else {
+        res.json(ingredients);
+      }
+    } catch (error) {
+      console.error('Failed to sync ingredients:', error);
+      res.status(500).json({ error: 'Failed to sync ingredients' });
     }
   });
 
   app.post('/api/ingredients', async (req, res) => {
-    const newIngredient = req.body;
-    await db.insert('ingredients', newIngredient.name, newIngredient);
-    
-    const ingredients = await db.getAll('ingredients');
-    broadcast({ type: 'UPDATE_INGREDIENTS', payload: ingredients });
-    res.status(201).json(newIngredient);
-  });
-
-  app.delete('/api/ingredients/:name', async (req, res) => {
-    const { name } = req.params;
-    await db.delete('ingredients', name);
-    
-    const ingredients = await db.getAll('ingredients');
-    broadcast({ type: 'UPDATE_INGREDIENTS', payload: ingredients });
-    res.status(204).send();
-  });
-
-  app.patch('/api/ingredients/:name', async (req, res) => {
-    const { name } = req.params;
-    const updates = req.body;
-    
-    const ingredient = await db.getById<any>('ingredients', name);
-    if (ingredient) {
-      const updatedIngredient = { ...ingredient, ...updates };
-      await db.update('ingredients', name, updatedIngredient);
+    try {
+      const newIngredient = req.body;
+      await db.insert('ingredients', newIngredient.name, newIngredient);
       
       const ingredients = await db.getAll('ingredients');
       broadcast({ type: 'UPDATE_INGREDIENTS', payload: ingredients });
-      res.json(updatedIngredient);
-    } else {
-      res.status(404).json({ error: 'Ingredient not found' });
+      res.status(201).json(newIngredient);
+    } catch (error) {
+      console.error('Failed to add ingredient:', error);
+      res.status(500).json({ error: 'Failed to add ingredient' });
+    }
+  });
+
+  app.delete('/api/ingredients/:name', async (req, res) => {
+    try {
+      const { name } = req.params;
+      await db.delete('ingredients', name);
+      
+      const ingredients = await db.getAll('ingredients');
+      broadcast({ type: 'UPDATE_INGREDIENTS', payload: ingredients });
+      res.status(204).send();
+    } catch (error) {
+      console.error('Failed to delete ingredient:', error);
+      res.status(500).json({ error: 'Failed to delete ingredient' });
+    }
+  });
+
+  app.patch('/api/ingredients/:name', async (req, res) => {
+    try {
+      const { name } = req.params;
+      const updates = req.body;
+      
+      const ingredient = await db.getById<any>('ingredients', name);
+      if (ingredient) {
+        const updatedIngredient = { ...ingredient, ...updates };
+        await db.update('ingredients', name, updatedIngredient);
+        
+        const ingredients = await db.getAll('ingredients');
+        broadcast({ type: 'UPDATE_INGREDIENTS', payload: ingredients });
+        res.json(updatedIngredient);
+      } else {
+        res.status(404).json({ error: 'Ingredient not found' });
+      }
+    } catch (error) {
+      console.error('Failed to update ingredient:', error);
+      res.status(500).json({ error: 'Failed to update ingredient' });
     }
   });
 
   // API Routes - Orders
   app.get('/api/orders', async (req, res) => {
-    const orders = await db.getAll('orders');
-    res.json(orders);
+    try {
+      const orders = await db.getAll('orders');
+      res.json(orders);
+    } catch (error) {
+      console.error('Failed to get orders:', error);
+      res.status(500).json({ error: 'Failed to get orders' });
+    }
   });
 
   app.post('/api/orders', async (req, res) => {
-    const newOrder = req.body;
-    await db.insert('orders', newOrder.id, newOrder);
-    
-    broadcast({ type: 'NEW_ORDER', payload: newOrder });
-    res.status(201).json(newOrder);
+    try {
+      const newOrder = req.body;
+      await db.insert('orders', newOrder.id, newOrder);
+      
+      broadcast({ type: 'NEW_ORDER', payload: newOrder });
+      res.status(201).json(newOrder);
+    } catch (error) {
+      console.error('Failed to add order:', error);
+      res.status(500).json({ error: 'Failed to add order' });
+    }
   });
 
   app.patch('/api/orders/:id', async (req, res) => {
-    const { id } = req.params;
-    const updates = req.body;
-    
-    const order = await db.getById<any>('orders', id);
-    if (order) {
-      const updatedOrder = { ...order, ...updates };
-      await db.update('orders', id, updatedOrder);
+    try {
+      const { id } = req.params;
+      const updates = req.body;
       
-      broadcast({ type: 'UPDATE_ORDER', payload: updatedOrder });
-      
-      if (updates.isFulfilled === true) {
-        broadcast({ type: 'NOTIFICATION', payload: { message: `Order ${updatedOrder.orderNumber} for ${updatedOrder.customerName} is ready for fulfillment!` } });
+      const order = await db.getById<any>('orders', id);
+      if (order) {
+        const updatedOrder = { ...order, ...updates };
+        await db.update('orders', id, updatedOrder);
+        
+        broadcast({ type: 'UPDATE_ORDER', payload: updatedOrder });
+        
+        if (updates.isFulfilled === true) {
+          broadcast({ type: 'NOTIFICATION', payload: { message: `Order ${updatedOrder.orderNumber} for ${updatedOrder.customerName} is ready for fulfillment!` } });
+        }
+        
+        res.json(updatedOrder);
+      } else {
+        res.status(404).json({ error: 'Order not found' });
       }
-      
-      res.json(updatedOrder);
-    } else {
-      res.status(404).json({ error: 'Order not found' });
+    } catch (error) {
+      console.error('Failed to update order:', error);
+      res.status(500).json({ error: 'Failed to update order' });
     }
   });
 
@@ -482,114 +696,158 @@ async function startServer() {
 
   // API Routes - Settings
   app.get('/api/settings', async (req, res) => {
-    const isDeliveryEnabledStr = await db.getSystemValue('isDeliveryEnabled');
-    res.json({ isDeliveryEnabled: isDeliveryEnabledStr === 'true' });
+    try {
+      const isDeliveryEnabledStr = await db.getSystemValue('isDeliveryEnabled');
+      res.json({ isDeliveryEnabled: isDeliveryEnabledStr === 'true' });
+    } catch (error) {
+      console.error('Failed to get settings:', error);
+      res.status(500).json({ error: 'Failed to get settings' });
+    }
   });
 
   app.post('/api/settings/delivery', async (req, res) => {
-    const { enabled } = req.body;
-    await db.setSystemValue('isDeliveryEnabled', String(enabled));
-    
-    broadcast({ type: 'UPDATE_SETTINGS', payload: { isDeliveryEnabled: enabled } });
-    res.json({ isDeliveryEnabled: enabled });
+    try {
+      const { enabled } = req.body;
+      await db.setSystemValue('isDeliveryEnabled', String(enabled));
+      
+      broadcast({ type: 'UPDATE_SETTINGS', payload: { isDeliveryEnabled: enabled } });
+      res.json({ isDeliveryEnabled: enabled });
+    } catch (error) {
+      console.error('Failed to update delivery settings:', error);
+      res.status(500).json({ error: 'Failed to update delivery settings' });
+    }
   });
 
   // API Routes - Volunteers
   app.get('/api/volunteers', async (req, res) => {
-    const volunteers = await db.getAll('volunteers');
-    res.json(volunteers);
+    try {
+      const volunteers = await db.getAll('volunteers');
+      res.json(volunteers);
+    } catch (error) {
+      console.error('Failed to get volunteers:', error);
+      res.status(500).json({ error: 'Failed to get volunteers' });
+    }
   });
 
   app.post('/api/volunteers', async (req, res) => {
-    const newVolunteer = req.body;
-    await db.insert('volunteers', newVolunteer.id, newVolunteer);
-    
-    const volunteers = await db.getAll('volunteers');
-    broadcast({ type: 'UPDATE_VOLUNTEERS', payload: volunteers });
-    res.status(201).json(newVolunteer);
-  });
-
-  app.patch('/api/volunteers/:id', async (req, res) => {
-    const { id } = req.params;
-    const updates = req.body;
-    
-    const volunteer = await db.getById<any>('volunteers', id);
-    if (volunteer) {
-      const updatedVolunteer = { ...volunteer, ...updates };
-      await db.update('volunteers', id, updatedVolunteer);
+    try {
+      const newVolunteer = req.body;
+      await db.insert('volunteers', newVolunteer.id, newVolunteer);
       
       const volunteers = await db.getAll('volunteers');
       broadcast({ type: 'UPDATE_VOLUNTEERS', payload: volunteers });
-      res.json(updatedVolunteer);
-    } else {
-      res.status(404).json({ error: 'Volunteer not found' });
+      res.status(201).json(newVolunteer);
+    } catch (error) {
+      console.error('Failed to add volunteer:', error);
+      res.status(500).json({ error: 'Failed to add volunteer' });
+    }
+  });
+
+  app.patch('/api/volunteers/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const volunteer = await db.getById<any>('volunteers', id);
+      if (volunteer) {
+        const updatedVolunteer = { ...volunteer, ...updates };
+        await db.update('volunteers', id, updatedVolunteer);
+        
+        const volunteers = await db.getAll('volunteers');
+        broadcast({ type: 'UPDATE_VOLUNTEERS', payload: volunteers });
+        res.json(updatedVolunteer);
+      } else {
+        res.status(404).json({ error: 'Volunteer not found' });
+      }
+    } catch (error) {
+      console.error('Failed to update volunteer:', error);
+      res.status(500).json({ error: 'Failed to update volunteer' });
     }
   });
 
   app.delete('/api/volunteers/:id', async (req, res) => {
-    const { id } = req.params;
-    await db.delete('volunteers', id);
-    
-    const volunteers = await db.getAll('volunteers');
-    broadcast({ type: 'UPDATE_VOLUNTEERS', payload: volunteers });
-    res.status(204).send();
+    try {
+      const { id } = req.params;
+      await db.delete('volunteers', id);
+      
+      const volunteers = await db.getAll('volunteers');
+      broadcast({ type: 'UPDATE_VOLUNTEERS', payload: volunteers });
+      res.status(204).send();
+    } catch (error) {
+      console.error('Failed to delete volunteer:', error);
+      res.status(500).json({ error: 'Failed to delete volunteer' });
+    }
   });
 
   // API Routes - Availability
   app.get('/api/availability', async (req, res) => {
-    const availability = await db.getAll('availability');
-    res.json(availability);
+    try {
+      const availability = await db.getAll('availability');
+      res.json(availability);
+    } catch (error) {
+      console.error('Failed to get availability:', error);
+      res.status(500).json({ error: 'Failed to get availability' });
+    }
   });
 
   app.post('/api/availability', async (req, res) => {
-    const newAvailability = req.body;
-    await db.insert('availability', newAvailability.id, newAvailability);
-    
-    const availability = await db.getAll('availability');
-    broadcast({ type: 'UPDATE_AVAILABILITY', payload: availability });
-    res.status(201).json(newAvailability);
-  });
-
-  app.patch('/api/availability/:id', async (req, res) => {
-    const { id } = req.params;
-    const updates = req.body;
-    
-    const avail = await db.getById<any>('availability', id);
-    if (avail) {
-      const updatedAvail = { ...avail, ...updates };
-      await db.update('availability', id, updatedAvail);
+    try {
+      const newAvailability = req.body;
+      await db.insert('availability', newAvailability.id, newAvailability);
       
       const availability = await db.getAll('availability');
       broadcast({ type: 'UPDATE_AVAILABILITY', payload: availability });
-      res.json(updatedAvail);
-    } else {
-      res.status(404).json({ error: 'Availability not found' });
+      res.status(201).json(newAvailability);
+    } catch (error) {
+      console.error('Failed to add availability:', error);
+      res.status(500).json({ error: 'Failed to add availability' });
+    }
+  });
+
+  app.patch('/api/availability/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const avail = await db.getById<any>('availability', id);
+      if (avail) {
+        const updatedAvail = { ...avail, ...updates };
+        await db.update('availability', id, updatedAvail);
+        
+        const availability = await db.getAll('availability');
+        broadcast({ type: 'UPDATE_AVAILABILITY', payload: availability });
+        res.json(updatedAvail);
+      } else {
+        res.status(404).json({ error: 'Availability not found' });
+      }
+    } catch (error) {
+      console.error('Failed to update availability:', error);
+      res.status(500).json({ error: 'Failed to update availability' });
     }
   });
 
   app.delete('/api/availability/:id', async (req, res) => {
-    const { id } = req.params;
-    await db.delete('availability', id);
-    
-    const availability = await db.getAll('availability');
-    broadcast({ type: 'UPDATE_AVAILABILITY', payload: availability });
-    res.status(204).send();
+    try {
+      const { id } = req.params;
+      await db.delete('availability', id);
+      
+      const availability = await db.getAll('availability');
+      broadcast({ type: 'UPDATE_AVAILABILITY', payload: availability });
+      res.status(204).send();
+    } catch (error) {
+      console.error('Failed to delete availability:', error);
+      res.status(500).json({ error: 'Failed to delete availability' });
+    }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+  // Production static files
+  if (process.env.NODE_ENV === 'production') {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('(.*)', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
-    app.use(vite.middlewares);
-  } else {
-    app.use(express.static('dist'));
   }
-
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
 }
 
 startServer();

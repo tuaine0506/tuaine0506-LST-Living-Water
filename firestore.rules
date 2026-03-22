@@ -89,8 +89,12 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/system/admin_emails).data.value.split(',').hasAny([request.auth.token.email]) ||
+        ((exists(/databases/$(database)/documents/system/allowedAdminEmails) && request.auth.token.email in get(/databases/$(database)/documents/system/allowedAdminEmails).data.value) ||
          (request.auth.token.email == "teisi.uaine@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
     function isValidEmail(email) {
@@ -101,43 +105,100 @@ service cloud.firestore {
       return request.resource.data.keys().hasOnly(fields);
     }
 
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Domain Validators
+    
+    function isValidProduct(data) {
+      return hasRequiredFields(['id', 'name', 'description', 'imageColor', 'ingredients', 'available']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.description is string && data.description.size() < 1000 &&
+             data.imageColor is string &&
+             data.ingredients is list &&
+             data.available is bool;
+    }
+
+    function isValidIngredient(data) {
+      return hasRequiredFields(['name', 'available']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
+             data.available is bool;
+    }
+
+    function isValidOrder(data) {
+      return hasRequiredFields(['id', 'customerName', 'customerContact', 'items', 'assignedGroup', 'orderDate', 'isFulfilled', 'totalPrice', 'donationAmount', 'deliveryOption', 'orderNumber', 'zelleConfirmationNumber', 'isRecurring']) &&
+             data.id is string &&
+             data.customerName is string && data.customerName.size() > 0 && data.customerName.size() < 100 &&
+             data.customerContact is string && data.customerContact.size() > 0 &&
+             (data.customerEmail == null || isValidEmail(data.customerEmail)) &&
+             data.items is list &&
+             data.totalPrice is number && data.totalPrice >= 0 &&
+             data.donationAmount is number && data.donationAmount >= 0 &&
+             data.isFulfilled is bool &&
+             data.isRecurring is bool;
+    }
+
+    function isValidVolunteer(data) {
+      return hasRequiredFields(['id', 'name', 'email', 'phone', 'group']) &&
+             data.id is string &&
+             data.name is string && data.name.size() > 0 &&
+             isValidEmail(data.email) &&
+             data.phone is string &&
+             data.group is string;
+    }
+
+    function isValidAvailability(data) {
+      return hasRequiredFields(['id', 'volunteerId', 'startTime', 'endTime', 'isRecurring']) &&
+             data.id is string &&
+             data.volunteerId is string &&
+             data.startTime is string &&
+             data.endTime is string &&
+             data.isRecurring is bool;
+    }
+
     // ===============================================================
     // Collection Rules
     // ===============================================================
 
     match /system/{key} {
-      allow read: if true; // Publicly readable for app config
+      allow read: if isAdmin();
       allow write: if isAdmin();
     }
 
     match /products/{id} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() && isValidProduct(request.resource.data);
     }
 
     match /ingredients/{name} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() && isValidIngredient(request.resource.data);
     }
 
     match /orders/{id} {
-      allow read: if true; // Customers need to see their orders by ID
-      allow create: if true; // Anyone can place an order
-      allow update, delete: if isAdmin();
+      allow read: if isAdmin(); 
+      allow create: if isValidOrder(request.resource.data);
+      allow update, delete: if isAdmin() && isValidOrder(request.resource.data);
     }
 
     match /volunteers/{id} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == id);
+      allow read: if isAdmin() || isOwner(id);
+      allow write: if (isAdmin() || isOwner(id)) && isValidVolunteer(request.resource.data);
     }
 
     match /availability/{id} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == request.resource.data.volunteerId);
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.volunteerId);
+      allow write: if (isAdmin() || (isAuthenticated() && request.auth.uid == request.resource.data.volunteerId)) && isValidAvailability(request.resource.data);
     }
 
     match /verification_codes/{identifier} {
-      allow read, write: if true; // Needed for public verification flow
+      allow read, write: if isAdmin(); // Only server should really touch these, or admins for debugging
+    }
+
+    match /sessions/{token} {
+      allow read, write: if false; // Only server should touch sessions
     }
   }
 }

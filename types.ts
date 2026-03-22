@@ -40,6 +40,13 @@ export enum GroupName {
 
 export type DeliveryOption = 'Pickup' | 'Delivery';
 
+export interface DonationTier {
+  id: string;
+  name: string;
+  amount: number;
+  reward: string;
+}
+
 export interface Order {
   id: string;
   customerName: string;

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { ProductPrices, DeliveryOption, OrderSize, GroupName } from '../types';
-import { X, Trash2, Heart, AlertTriangle, ShoppingCart, Send, PackageCheck, Truck, Plus, Minus, Calendar, Clock, Edit2, User } from 'lucide-react';
+import { ProductPrices, DeliveryOption, OrderSize, GroupName, DonationTier } from '../types';
+import { X, Trash2, Heart, AlertTriangle, ShoppingCart, Send, PackageCheck, Truck, Plus, Minus, Calendar, Clock, Edit2, User, Gift } from 'lucide-react';
 import { MiniCalendar } from './MiniCalendar';
+import { DONATION_TIERS } from '../constants';
 
 const OrderForm: React.FC = () => {
   const { cart, cartId, donationAmount, setDonationAmount, removeFromCart, updateCartQuantity, placeOrder, clearCart, products, ingredients: allIngredients, isDeliveryEnabled, volunteers } = useApp();
@@ -445,14 +446,40 @@ const OrderForm: React.FC = () => {
                   />
                 </div>
                 <div className="ml-4">
-                  <span className="block text-sm font-bold text-brand-brown group-hover:text-brand-orange transition-colors">Make shot order recurring</span>
-                  <span className="block text-xs text-gray-500 mt-0.5">4 weeks prepaid - <span className="text-brand-green font-bold">$120 best value!</span></span>
+                  <span className="block text-sm font-bold text-brand-brown group-hover:text-brand-orange transition-colors">Recurring Order ($120 bundle)</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">4 weeks prepaid - <span className="text-brand-green font-bold">Best value for your health!</span></span>
                 </div>
               </label>
 
               {isRecurring && (
                 <div className="mt-4 pl-10 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                   <p className="text-[10px] text-gray-400 mt-2 italic">Recurring orders directly support our youth and young adults.</p>
+                  
+                  <div className="bg-brand-green/5 rounded-2xl p-5 border border-brand-green/10">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Calendar className="text-brand-green" size={20} />
+                      <h4 className="font-bold text-brand-green text-sm uppercase tracking-widest">Your 4-Week Schedule</h4>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {recurringDates.map((date, idx) => (
+                        <MiniCalendar 
+                          key={idx}
+                          selectedDate={date}
+                          onSelect={(newDate) => handleRecurringDateChange(idx, newDate)}
+                          weekLabel={`Week ${idx + 1}`}
+                        />
+                      ))}
+                    </div>
+                    
+                    <div className="mt-4 p-3 bg-white/50 rounded-xl border border-dashed border-brand-green/30">
+                      <p className="text-[10px] text-brand-brown/70 leading-relaxed">
+                        <span className="font-bold text-brand-green">Note:</span> You will receive your full cart selection (
+                        {cart.map(item => `${item.quantity}x ${item.productName}`).join(', ')}
+                        ) on each of these dates.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -530,102 +557,9 @@ const OrderForm: React.FC = () => {
                 </div>
               )}
             </div>
-
-            {isRecurring && (
-              <div className="bg-brand-green/5 rounded-2xl p-5 border border-brand-green/10 animate-in fade-in slide-in-from-top-2 duration-300">
-                <div className="flex items-center gap-2 mb-4">
-                  <Calendar className="text-brand-green" size={20} />
-                  <h4 className="font-bold text-brand-green text-sm uppercase tracking-widest">Your 4-Week Schedule</h4>
-                </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {recurringDates.map((date, idx) => (
-                    <MiniCalendar 
-                      key={idx}
-                      selectedDate={date}
-                      onSelect={(newDate) => handleRecurringDateChange(idx, newDate)}
-                      weekLabel={`Week ${idx + 1}`}
-                    />
-                  ))}
-                </div>
-                
-                <div className="mt-4 p-3 bg-white/50 rounded-xl border border-dashed border-brand-green/30">
-                  <p className="text-[10px] text-brand-brown/70 leading-relaxed">
-                    <span className="font-bold text-brand-green">Note:</span> You will receive your full cart selection (
-                    {cart.map(item => `${item.quantity}x ${item.productName}`).join(', ')}
-                    ) on each of these dates.
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* Section 3: Support with Donation - ALWAYS VISIBLE */}
-        <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-          <div className="bg-brand-orange/5 px-4 py-3 border-b border-brand-orange/10 flex items-center gap-2">
-            <Heart size={18} className="text-brand-orange" />
-            <h3 className="font-bold text-brand-orange uppercase text-xs tracking-widest">Support with a Donation</h3>
-          </div>
-          <div className="p-5">
-            <p className="text-xs text-brand-brown/70 mb-4 leading-relaxed">Want to support our Youth & Young Adults without or in addition to shots? Enter a donation amount below.</p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-grow">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="5"
-                  placeholder="Enter amount"
-                  value={donationAmount === 0 ? '' : donationAmount}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    setDonationAmount(isNaN(val) ? 0 : val);
-                  }}
-                  className="w-full pl-8 p-4 border border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-brand-orange focus:border-transparent outline-none transition-all font-bold text-brand-brown"
-                />
-              </div>
-              <div className="flex gap-2">
-                {[10, 20, 50].map(amt => (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => setDonationAmount(amt)}
-                    className={`flex-1 sm:flex-none px-4 py-4 rounded-xl font-bold text-sm transition-all border ${donationAmount === amt ? 'bg-brand-orange border-brand-orange text-white shadow-lg' : 'bg-white border-gray-200 text-brand-brown hover:border-brand-orange hover:text-brand-orange'}`}
-                  >
-                    +${amt}
-                  </button>
-                ))}
-              </div>
-            </div>
-            
-            {/* Show active donation in cart summary if cart is otherwise empty */}
-            {donationAmount > 0 && cart.length === 0 && (
-              <div className="mt-4 flex items-center justify-between p-4 bg-brand-orange/5 border border-brand-orange/20 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-brand-orange/10 rounded-lg">
-                    <Heart size={18} className="text-brand-orange" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-brand-brown">Direct Donation</p>
-                    <p className="text-[10px] text-brand-orange font-bold uppercase tracking-wider">Thank you for your support!</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <p className="font-bold text-brand-orange text-lg">${donationAmount.toFixed(2)}</p>
-                  <button 
-                    type="button" 
-                    onClick={() => setDonationAmount(0)} 
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-        
         {/* Section 4: Checkout Details - Show if cart has items OR donation > 0 */}
         {(cart.length > 0 || donationAmount > 0) && (
           <>
@@ -636,6 +570,29 @@ const OrderForm: React.FC = () => {
               </div>
               
               <div className="p-5 space-y-6">
+                {/* Donation Summary if present */}
+                {donationAmount > 0 && (
+                  <div className="p-4 bg-brand-orange/5 border border-brand-orange/20 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Heart size={18} className="text-brand-orange" />
+                      <div>
+                        <p className="text-sm font-bold text-brand-brown">Direct Donation</p>
+                        <p className="text-[10px] text-brand-orange font-bold uppercase tracking-wider">Thank you for your support!</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <p className="font-bold text-brand-orange text-lg">${donationAmount.toFixed(2)}</p>
+                      <button 
+                        type="button" 
+                        onClick={() => setDonationAmount(0)} 
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Total Summary */}
                 <div className="flex justify-between items-center p-4 bg-brand-green text-white rounded-xl shadow-lg">
                   <span className="text-lg font-bold uppercase tracking-wider">Total Amount</span>
